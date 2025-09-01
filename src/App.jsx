@@ -8,7 +8,7 @@ import CompletionPopup from './components/CompletionPopup';
 import Hearts from './components/Hearts';
 import { generatePuzzle, isGridComplete, isGridValid, isValidMove, preloadPuzzleDatabase, stringToGrid, parseGameFromUrl, generateShareableUrl, addGameRecord, getDifficultyRecord, getCompletedSections } from './utils/sudokuUtils';
 import { playCompletionSound, playMultipleCompletionSound } from './utils/audioUtils';
-import { Undo, Add, Refresh, Lightbulb, LightbulbOutlined, Circle, FiberManualRecord, Pause, PlayArrow, Share, Menu, VolumeUp, VolumeOff } from '@mui/icons-material';
+import { Undo, Add, Refresh, Lightbulb, LightbulbOutlined, Circle, FiberManualRecord, Pause, PlayArrow, Share, Menu, VolumeUp, VolumeOff, Edit, EditOutlined } from '@mui/icons-material';
 import { Drawer, List, ListItem, ListItemButton, ListItemIcon, ListItemText, IconButton, Divider, Box, Typography } from '@mui/material';
 import './App.css';
 
@@ -42,6 +42,8 @@ function App() {
   });
   const [isSoundEnabled, setIsSoundEnabled] = useState(true);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  const [isNotesMode, setIsNotesMode] = useState(false);
+  const [notes, setNotes] = useState(Array(9).fill().map(() => Array(9).fill().map(() => [])));
   
   // Cache for animation puzzles to avoid re-loading
   const [animationPuzzleCache, setAnimationPuzzleCache] = useState(new Map());
@@ -84,6 +86,8 @@ function App() {
         setMoveHistory(urlGameState.moveHistory);
         setLives(urlGameState.lives);
         setHintLevel(urlGameState.hintLevel);
+        setIsNotesMode(urlGameState.isNotesMode || false);
+        setNotes(urlGameState.notes || Array(9).fill().map(() => Array(9).fill().map(() => [])));
         setIsPaused(urlGameState.isPaused);
         setIsTimerRunning(!urlGameState.isPaused && urlGameState.gameStatus === 'playing');
         
@@ -112,6 +116,8 @@ function App() {
         setMoveHistory(savedState.moveHistory || []);
         setLives(savedState.lives !== undefined ? savedState.lives : 3);
         setHintLevel(savedState.hintLevel || 'medium');
+        setIsNotesMode(savedState.isNotesMode || false);
+        setNotes(savedState.notes || Array(9).fill().map(() => Array(9).fill().map(() => [])));
         setIsPaused(true); // Start paused when showing continue popup
         
         // Handle timer restoration
@@ -150,12 +156,14 @@ function App() {
         moveHistory,
         lives,
         hintLevel,
+        isNotesMode,
+        notes,
         isPaused,
         lastSaveTime: Date.now()
       };
       saveGameState(gameState);
     }
-  }, [grid, originalGrid, solution, selectedCell, selectedNumber, difficulty, gameStatus, timer, moveHistory, lives, hintLevel, isPaused]);
+  }, [grid, originalGrid, solution, selectedCell, selectedNumber, difficulty, gameStatus, timer, moveHistory, lives, hintLevel, isNotesMode, notes, isPaused]);
 
   // Timer effect
   useEffect(() => {
@@ -241,6 +249,8 @@ function App() {
     setIsShaking(false);
     setDifficulty(selectedDifficulty);
     setHintLevel('medium');
+    setIsNotesMode(false);
+    setNotes(Array(9).fill().map(() => Array(9).fill().map(() => [])));
     setIsPaused(false);
     
     // Clear any existing saved state when starting new game
@@ -320,6 +330,32 @@ function App() {
     const [row, col] = selectedCell;
     if (originalGrid[row][col] !== 0) return; // Can't change original cells
     
+    if (isNotesMode) {
+      // Handle notes mode
+      if (digit === 0) {
+        // Clear all notes from the selected cell when X is clicked
+        const newNotes = notes.map(r => r.map(c => [...c]));
+        newNotes[row][col] = [];
+        setNotes(newNotes);
+        return;
+      }
+      
+      const newNotes = notes.map(r => r.map(c => [...c]));
+      const cellNotes = newNotes[row][col];
+      
+      if (cellNotes.includes(digit)) {
+        // Remove the note if it already exists
+        newNotes[row][col] = cellNotes.filter(note => note !== digit);
+      } else if (cellNotes.length < 4) {
+        // Add the note if there's space (max 4 notes per cell)
+        newNotes[row][col] = [...cellNotes, digit].sort();
+      }
+      
+      setNotes(newNotes);
+      return;
+    }
+    
+    // Normal digit placement mode
     const previousValue = grid[row][col];
     
     // Only add to history if the value actually changes
@@ -331,6 +367,13 @@ function App() {
     const newGrid = grid.map(r => [...r]);
     newGrid[row][col] = digit;
     setGrid(newGrid);
+    
+    // Clear notes for this cell when placing a digit
+    if (digit !== 0) {
+      const newNotes = notes.map(r => r.map(c => [...c]));
+      newNotes[row][col] = [];
+      setNotes(newNotes);
+    }
 
     // Check if the move is wrong (not the correct solution for this cell)
     if (digit !== 0 && solution && digit !== solution[row][col]) {
@@ -435,6 +478,8 @@ function App() {
     setMoveHistory([]);
     setLives(3);
     setIsShaking(false);
+    setIsNotesMode(false);
+    setNotes(Array(9).fill().map(() => Array(9).fill().map(() => [])));
     setIsPaused(false);
     setGlowingCompletions({
       rows: [],
@@ -479,6 +524,10 @@ function App() {
     return `control-button hint-${hintLevel}`;
   };
 
+  const handleNotesToggle = () => {
+    setIsNotesMode(!isNotesMode);
+  };
+
   const handlePauseToggle = () => {
     const newPausedState = !isPaused;
     setIsPaused(newPausedState);
@@ -521,6 +570,8 @@ function App() {
       timer,
       lives,
       hintLevel,
+      isNotesMode,
+      notes,
       moveHistory,
       gameStatus,
       selectedCell,
@@ -623,6 +674,8 @@ function App() {
               hintLevel={hintLevel}
               isAnimating={isAnimating}
               shakingCompletions={glowingCompletions}
+              notes={notes}
+              isNotesMode={isNotesMode}
             />
 
             <DigitButtons
@@ -632,26 +685,50 @@ function App() {
               originalGrid={originalGrid}
               hintLevel={hintLevel}
               disabled={isAnimating}
+              isNotesMode={isNotesMode}
+              notes={notes}
             />
 
             <div className="control-buttons">
-              <button 
-                className="control-button"
-                onClick={handleUndo}
-                disabled={moveHistory.length === 0 || isAnimating}
-                title="Undo"
-              >
-                <Undo />
-              </button>
+              <div className="control-button-group">
+                <button 
+                  className="control-button"
+                  onClick={handleUndo}
+                  disabled={moveHistory.length === 0 || isAnimating}
+                  title="Undo"
+                >
+                  <Undo />
+                </button>
+                <span className="control-label">Undo</span>
+              </div>
               
-              <button 
-                className={getHintButtonClass()}
-                onClick={handleHintClick}
-                disabled={isAnimating}
-                title={`Hint Level: ${hintLevel.charAt(0).toUpperCase() + hintLevel.slice(1)}`}
-              >
-                {getHintIcon()}
-              </button>
+              <div className="control-button-group">
+                <button 
+                  className={getHintButtonClass()}
+                  onClick={handleHintClick}
+                  disabled={isAnimating}
+                  title={`Hint Level: ${hintLevel.charAt(0).toUpperCase() + hintLevel.slice(1)}`}
+                >
+                  {getHintIcon()}
+                </button>
+                <span className="control-label">
+                  {hintLevel.charAt(0).toUpperCase() + hintLevel.slice(1)}
+                </span>
+              </div>
+              
+              <div className="control-button-group">
+                <button 
+                  className={`control-button ${isNotesMode ? 'notes-active' : ''}`}
+                  onClick={handleNotesToggle}
+                  disabled={isAnimating}
+                  title={isNotesMode ? 'Exit Notes Mode' : 'Enter Notes Mode'}
+                >
+                  {isNotesMode ? <Edit /> : <EditOutlined />}
+                </button>
+                <span className="control-label">
+                  {isNotesMode ? 'Notes' : 'Notes'}
+                </span>
+              </div>
             </div>
 
             {/* Share Message */}

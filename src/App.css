@@ -586,6 +586,7 @@
   border-radius: 50%;
   box-shadow: 0 0.0625rem 0.1875rem rgba(0, 0, 0, 0.1);
   aspect-ratio: 1;
+  position: relative;
 }
 
 .sudoku-cell:focus {
@@ -642,6 +643,71 @@
 
 .sudoku-cell:disabled {
   cursor: default;
+}
+
+/* Notes styles */
+.notes-container {
+  position: absolute;
+  top: -0.35rem;
+  left: -0.35rem;
+  right: -0.35rem;
+  bottom: -0.35rem;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+  pointer-events: none;
+}
+
+.note {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.5rem;
+  font-weight: 500;
+  color: #667eea;
+}
+
+.note.top-left {
+  align-items: flex-start;
+  justify-content: flex-start;
+  padding: 0.15rem 0 0 0.15rem;
+}
+
+.note.top-right {
+  align-items: flex-start;
+  justify-content: flex-end;
+  padding: 0.15rem 0.15rem 0 0;
+}
+
+.note.bottom-left {
+  align-items: flex-end;
+  justify-content: flex-start;
+  padding: 0 0 0.15rem 0.15rem;
+}
+
+.note.bottom-right {
+  align-items: flex-end;
+  justify-content: flex-end;
+  padding: 0 0.15rem 0.15rem 0;
+}
+
+/* Notes mode button styling */
+.control-button.notes-active {
+  background: linear-gradient(135deg, #667eea, #764ba2);
+  color: white;
+  border: 1px solid #5a67d8;
+}
+
+.control-button.notes-active:hover:not(:disabled) {
+  background: linear-gradient(135deg, #5a67d8, #6b46c1);
+  border-color: #4c51bf;
+  transform: scale(1.02);
+  box-shadow: 0 0.25rem 0.375rem rgba(102, 126, 234, 0.3);
+}
+
+.control-button.notes-active:active:not(:disabled) {
+  transform: scale(0.98);
+  background: linear-gradient(135deg, #4c51bf, #553c9a);
 }
 
 /* Animation styles for game start */
@@ -797,11 +863,28 @@
   .control-buttons {
     display: flex;
     justify-content: center;
-    align-items: center;
+    align-items: flex-start;
     gap: 1.5rem;
     padding: 0 0.3125rem;
     margin-top: 0.625rem;
   }
+
+.control-button-group {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.control-label {
+  font-size: 0.65rem;
+  font-weight: 500;
+  color: #718096;
+  text-align: center;
+  line-height: 1;
+  min-height: 0.8rem;
+  text-transform: capitalize;
+}
 
 .control-button {
   background: white;
@@ -869,6 +952,14 @@
   .remaining-count {
     font-size: 0.5rem;
   }
+  
+  .note {
+    font-size: 0.4rem;
+  }
+  
+  .control-label {
+    font-size: 0.55rem;
+  }
 }
 
 /* Larger screens - keep mobile-first design but allow more space */
@@ -885,6 +976,14 @@
     min-height: 3.125rem;
     max-width: 4.0625rem;
     font-size: 1.2rem;
+  }
+  
+  .note {
+    font-size: 0.55rem;
+  }
+  
+  .control-label {
+    font-size: 0.7rem;
   }
 }
 
@@ -926,6 +1025,14 @@
     max-width: 24rem;
     margin: 0 auto;
     padding: 1.25rem 0;
+  }
+  
+  .note {
+    font-size: 0.6rem;
+  }
+  
+  .control-label {
+    font-size: 0.75rem;
   }
 }
 

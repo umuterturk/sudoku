@@ -12,7 +12,9 @@ const SudokuCell = ({
   row,
   col,
   isAnimating,
-  shouldGlow
+  shouldGlow,
+  notes,
+  isNotesMode
 }) => {
   return (
     <div className="cell-container">
@@ -28,7 +30,16 @@ const SudokuCell = ({
         onClick={() => !isAnimating && onClick(row, col)}
         disabled={isAnimating}
       >
-        {value === 0 ? '' : value}
+        {value === 0 ? (
+          notes && notes.length > 0 ? (
+            <div className="notes-container">
+              <div className="note top-left">{notes[0] || ''}</div>
+              <div className="note top-right">{notes[1] || ''}</div>
+              <div className="note bottom-left">{notes[2] || ''}</div>
+              <div className="note bottom-right">{notes[3] || ''}</div>
+            </div>
+          ) : ''
+        ) : value}
       </button>
     </div>
   );

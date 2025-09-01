@@ -10,7 +10,9 @@ const SudokuGrid = ({
   onCellClick,
   hintLevel,
   isAnimating,
-  shakingCompletions
+  shakingCompletions,
+  notes,
+  isNotesMode
 }) => {
   const isOriginalCell = (row, col) => {
     if (isAnimating) return false; // During animation, no cells are "original"
@@ -132,6 +134,8 @@ const SudokuGrid = ({
               col={colIndex}
               isAnimating={isAnimating}
               shouldGlow={shouldGlow(rowIndex, colIndex)}
+              notes={notes ? notes[rowIndex][colIndex] : []}
+              isNotesMode={isNotesMode}
             />
           ))}
         </div>

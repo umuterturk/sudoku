@@ -1,7 +1,7 @@
 import React from 'react';
 import { isValidMove } from '../utils/sudokuUtils';
 
-const DigitButtons = ({ onDigitSelect, selectedCell, grid, originalGrid, hintLevel, disabled = false }) => {
+const DigitButtons = ({ onDigitSelect, selectedCell, grid, originalGrid, hintLevel, disabled = false, isNotesMode, notes }) => {
   const firstRowDigits = [1, 2, 3, 4, 5];
   const secondRowDigits = [6, 7, 8, 9, 'X'];
 
@@ -37,8 +37,17 @@ const DigitButtons = ({ onDigitSelect, selectedCell, grid, originalGrid, hintLev
     if (disabled) return true; // Disable clear button when animation is running
     if (!selectedCell || !grid || !originalGrid) return true;
     const [row, col] = selectedCell;
-    // Disable if it's an original cell or if the cell is already empty
-    return originalGrid[row][col] !== 0 || grid[row][col] === 0;
+    
+    // If it's an original cell, always disable
+    if (originalGrid[row][col] !== 0) return true;
+    
+    // In notes mode, allow clearing if there are notes to clear
+    if (isNotesMode && notes && notes[row] && notes[row][col]) {
+      return notes[row][col].length === 0; // Disable only if no notes to clear
+    }
+    
+    // In normal mode, disable if the cell is already empty
+    return grid[row][col] === 0;
   };
 
   const getRemainingCount = (digit) => {
