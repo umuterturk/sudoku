@@ -1,5 +1,63 @@
 // Sudoku utility functions
 
+// Cache for loaded puzzle databases to avoid re-importing
+const puzzleCache = new Map();
+
+// Dynamically load puzzle database for a specific difficulty
+const loadPuzzleDatabase = async (difficulty) => {
+  // Check if already cached
+  if (puzzleCache.has(difficulty)) {
+    return puzzleCache.get(difficulty);
+  }
+
+  try {
+    let module;
+    switch (difficulty) {
+      case 'easy':
+        module = await import('../game_database/easy.js');
+        break;
+      case 'medium':
+        module = await import('../game_database/medium.js');
+        break;
+      case 'hard':
+        module = await import('../game_database/hard.js');
+        break;
+      case 'expert':
+        module = await import('../game_database/expert.js');
+        break;
+      default:
+        module = await import('../game_database/medium.js');
+    }
+
+    const puzzles = module.puzzles;
+    puzzleCache.set(difficulty, puzzles);
+    return puzzles;
+  } catch (error) {
+    console.error(`Failed to load ${difficulty} puzzles:`, error);
+    // Fallback to medium if available, otherwise return empty array
+    if (difficulty !== 'medium' && puzzleCache.has('medium')) {
+      return puzzleCache.get('medium');
+    }
+    return [];
+  }
+};
+
+// Preload puzzle databases for better performance (optional)
+export const preloadPuzzleDatabase = async (difficulty) => {
+  try {
+    await loadPuzzleDatabase(difficulty);
+    console.log(`Preloaded ${difficulty} puzzle database`);
+  } catch (error) {
+    console.warn(`Failed to preload ${difficulty} puzzles:`, error);
+  }
+};
+
+// Preload multiple difficulties
+export const preloadPuzzleDatabases = async (difficulties = ['medium']) => {
+  const promises = difficulties.map(diff => preloadPuzzleDatabase(diff));
+  await Promise.all(promises);
+};
+
 // Check if a number is valid in a specific position
 export const isValidMove = (grid, row, col, num) => {
   // Check row
@@ -54,6 +112,20 @@ export const solveSudoku = (grid) => {
   return true;
 };
 
+// Convert 81-character puzzle string to 9x9 grid
+export const stringToGrid = (puzzleString) => {
+  const grid = [];
+  for (let i = 0; i < 9; i++) {
+    const row = [];
+    for (let j = 0; j < 9; j++) {
+      const char = puzzleString[i * 9 + j];
+      row.push(parseInt(char, 10));
+    }
+    grid.push(row);
+  }
+  return grid;
+};
+
 // Generate a complete Sudoku grid
 export const generateCompleteGrid = () => {
   const grid = Array(9).fill().map(() => Array(9).fill(0));
@@ -92,8 +164,40 @@ export const generateCompleteGrid = () => {
   return grid;
 };
 
-// Generate a Sudoku puzzle by removing numbers from a complete grid
-export const generatePuzzle = (difficulty = 'medium') => {
+// Generate a Sudoku puzzle from the database
+export const generatePuzzle = async (difficulty = 'medium') => {
+  try {
+    // Dynamically load the puzzle database for the selected difficulty
+    const puzzleDatabase = await loadPuzzleDatabase(difficulty);
+    
+    if (!puzzleDatabase || puzzleDatabase.length === 0) {
+      throw new Error(`No puzzles available for difficulty: ${difficulty}`);
+    }
+    
+    // Select a random puzzle from the database
+    const randomIndex = Math.floor(Math.random() * puzzleDatabase.length);
+    const puzzleString = puzzleDatabase[randomIndex];
+    
+    // Convert the puzzle string to a 9x9 grid
+    const puzzle = stringToGrid(puzzleString);
+    
+    // Generate the solution by solving the puzzle
+    const solution = puzzle.map(row => [...row]); // Create a copy
+    solveSudoku(solution);
+    
+    return {
+      puzzle,
+      solution
+    };
+  } catch (error) {
+    console.error('Error generating puzzle:', error);
+    // Fallback: generate a simple puzzle algorithmically
+    return generateFallbackPuzzle(difficulty);
+  }
+};
+
+// Fallback puzzle generation using the original algorithm
+const generateFallbackPuzzle = (difficulty = 'medium') => {
   const completeGrid = generateCompleteGrid();
   const puzzle = completeGrid.map(row => [...row]);
   
@@ -101,7 +205,8 @@ export const generatePuzzle = (difficulty = 'medium') => {
   const difficultyLevels = {
     easy: 40,
     medium: 50,
-    hard: 60
+    hard: 60,
+    expert: 65
   };
   
   const cellsToRemove = difficultyLevels[difficulty] || 50;

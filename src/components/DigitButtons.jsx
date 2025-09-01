@@ -1,11 +1,12 @@
 import React from 'react';
 import { isValidMove } from '../utils/sudokuUtils';
 
-const DigitButtons = ({ onDigitSelect, selectedCell, grid, originalGrid, hintLevel }) => {
+const DigitButtons = ({ onDigitSelect, selectedCell, grid, originalGrid, hintLevel, disabled = false }) => {
   const firstRowDigits = [1, 2, 3, 4, 5];
   const secondRowDigits = [6, 7, 8, 9, 'X'];
 
   const handleDigitClick = (digit) => {
+    if (disabled) return; // Don't handle clicks when disabled
     if (selectedCell) {
       if (digit === 'X') {
         onDigitSelect(0); // Clear the cell
@@ -16,6 +17,7 @@ const DigitButtons = ({ onDigitSelect, selectedCell, grid, originalGrid, hintLev
   };
 
   const isDigitDisabled = (digit) => {
+    if (disabled) return true; // Disable all buttons when animation is running
     if (!selectedCell) return true;
     const [row, col] = selectedCell;
     if (originalGrid[row][col] !== 0) return true; // Can't change original cells
@@ -32,6 +34,7 @@ const DigitButtons = ({ onDigitSelect, selectedCell, grid, originalGrid, hintLev
   };
 
   const isClearDisabled = () => {
+    if (disabled) return true; // Disable clear button when animation is running
     if (!selectedCell) return true;
     const [row, col] = selectedCell;
     // Disable if it's an original cell or if the cell is already empty

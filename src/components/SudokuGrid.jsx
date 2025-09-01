@@ -8,13 +8,16 @@ const SudokuGrid = ({
   selectedCell, 
   selectedNumber,
   onCellClick,
-  hintLevel
+  hintLevel,
+  isAnimating
 }) => {
   const isOriginalCell = (row, col) => {
-    return originalGrid[row][col] !== 0;
+    if (isAnimating) return false; // During animation, no cells are "original"
+    return originalGrid && originalGrid[row][col] !== 0;
   };
 
   const isHighlighted = (row, col) => {
+    if (isAnimating) return false; // No highlights during animation
     if (!selectedCell) return false;
     if (hintLevel === 'arcade') return false; // No highlights in arcade mode
     
@@ -36,12 +39,14 @@ const SudokuGrid = ({
   };
 
   const isSameNumber = (row, col) => {
+    if (isAnimating) return false; // No number highlighting during animation
     if (!selectedNumber || grid[row][col] === 0) return false;
     if (hintLevel === 'arcade') return false; // No number highlighting in arcade mode
     return grid[row][col] === selectedNumber;
   };
 
   const isRelatedToSameNumber = (row, col) => {
+    if (isAnimating) return false; // No related highlighting during animation
     if (!selectedNumber || !selectedCell) return false;
     if (hintLevel === 'arcade' || hintLevel === 'hard') return false; // No indirect highlighting for arcade/hard
     
@@ -68,6 +73,7 @@ const SudokuGrid = ({
   };
 
   const hasError = (row, col) => {
+    if (isAnimating) return false; // No error checking during animation
     if (grid[row][col] === 0) return false;
     
     const num = grid[row][col];
@@ -78,6 +84,11 @@ const SudokuGrid = ({
   };
 
 
+
+  // Handle null grid case
+  if (!grid) {
+    return <div className="sudoku-grid">Loading grid...</div>;
+  }
 
   return (
     <div className="sudoku-grid">
@@ -96,6 +107,7 @@ const SudokuGrid = ({
               onClick={onCellClick}
               row={rowIndex}
               col={colIndex}
+              isAnimating={isAnimating}
             />
           ))}
         </div>
