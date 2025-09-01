@@ -373,6 +373,12 @@ function App() {
       const newNotes = notes.map(r => r.map(c => [...c]));
       newNotes[row][col] = [];
       setNotes(newNotes);
+      
+      // Automatically set selectedNumber to show hints for the entered number
+      setSelectedNumber(digit);
+    } else {
+      // If clearing the cell (digit is 0), clear the selected number
+      setSelectedNumber(null);
     }
 
     // Check if the move is wrong (not the correct solution for this cell)
