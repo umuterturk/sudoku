@@ -4,9 +4,12 @@ import DigitButtons from './components/DigitButtons';
 import DifficultyPopup from './components/DifficultyPopup';
 import ResetConfirmationPopup from './components/ResetConfirmationPopup';
 import ContinueGamePopup from './components/ContinueGamePopup';
+import CompletionPopup from './components/CompletionPopup';
 import Hearts from './components/Hearts';
-import { generatePuzzle, isGridComplete, isGridValid, isValidMove, preloadPuzzleDatabase, stringToGrid } from './utils/sudokuUtils';
-import { Undo, Add, Refresh, Lightbulb, LightbulbOutlined, Circle, FiberManualRecord, Pause, PlayArrow } from '@mui/icons-material';
+import { generatePuzzle, isGridComplete, isGridValid, isValidMove, preloadPuzzleDatabase, stringToGrid, parseGameFromUrl, generateShareableUrl, addGameRecord, getDifficultyRecord, getCompletedSections } from './utils/sudokuUtils';
+import { playCompletionSound, playMultipleCompletionSound } from './utils/audioUtils';
+import { Undo, Add, Refresh, Lightbulb, LightbulbOutlined, Circle, FiberManualRecord, Pause, PlayArrow, Share, Menu, VolumeUp, VolumeOff } from '@mui/icons-material';
+import { Drawer, List, ListItem, ListItemButton, ListItemIcon, ListItemText, IconButton, Divider, Box, Typography } from '@mui/material';
 import './App.css';
 
 function App() {
@@ -23,12 +26,22 @@ function App() {
   const [showDifficultyPopup, setShowDifficultyPopup] = useState(false);
   const [showResetPopup, setShowResetPopup] = useState(false);
   const [showContinuePopup, setShowContinuePopup] = useState(false);
+  const [showCompletionPopup, setShowCompletionPopup] = useState(false);
+  const [completionData, setCompletionData] = useState(null);
   const [lives, setLives] = useState(3);
   const [isShaking, setIsShaking] = useState(false);
   const [hintLevel, setHintLevel] = useState('medium'); // arcade, hard, medium, novice
   const [isPaused, setIsPaused] = useState(false);
   const [isAnimating, setIsAnimating] = useState(false);
   const [animationGrid, setAnimationGrid] = useState(null);
+  const [shareMessage, setShareMessage] = useState('');
+  const [glowingCompletions, setGlowingCompletions] = useState({
+    rows: [],
+    columns: [],
+    boxes: []
+  });
+  const [isSoundEnabled, setIsSoundEnabled] = useState(true);
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   
   // Cache for animation puzzles to avoid re-loading
   const [animationPuzzleCache, setAnimationPuzzleCache] = useState(new Map());
@@ -56,6 +69,33 @@ function App() {
   // Initialize game
   useEffect(() => {
     const initializeGame = async () => {
+      // First, check for URL game parameter
+      const urlGameState = parseGameFromUrl();
+      if (urlGameState) {
+        // Load game from URL
+        setGrid(urlGameState.grid);
+        setOriginalGrid(urlGameState.originalGrid);
+        setSolution(urlGameState.solution);
+        setSelectedCell(urlGameState.selectedCell);
+        setSelectedNumber(urlGameState.selectedNumber);
+        setDifficulty(urlGameState.difficulty);
+        setGameStatus(urlGameState.gameStatus);
+        setTimer(urlGameState.timer);
+        setMoveHistory(urlGameState.moveHistory);
+        setLives(urlGameState.lives);
+        setHintLevel(urlGameState.hintLevel);
+        setIsPaused(urlGameState.isPaused);
+        setIsTimerRunning(!urlGameState.isPaused && urlGameState.gameStatus === 'playing');
+        
+        // Clear the URL parameter after loading
+        const url = new URL(window.location);
+        url.searchParams.delete('game');
+        window.history.replaceState({}, document.title, url.toString());
+        
+        return; // Skip saved game check when loading from URL
+      }
+      
+      // Check for saved game in localStorage
       const savedState = loadGameState();
       if (savedState) {
         // Show continue game popup instead of directly restoring
@@ -287,6 +327,7 @@ function App() {
       setMoveHistory(prev => [...prev, { row, col, previousValue, newValue: digit }]);
     }
     
+    const oldGrid = grid.map(r => [...r]);
     const newGrid = grid.map(r => [...r]);
     newGrid[row][col] = digit;
     setGrid(newGrid);
@@ -305,6 +346,35 @@ function App() {
         }
         return newLives;
       });
+    } else if (digit !== 0) {
+      // Check for completed sections (only if it's a correct move)
+      const completedSections = getCompletedSections(oldGrid, newGrid, row, col);
+      
+      if (completedSections.rows.length > 0 || completedSections.columns.length > 0 || completedSections.boxes.length > 0) {
+        // Set the glowing completions
+        setGlowingCompletions(completedSections);
+        
+        // Play completion sound (only if sound is enabled)
+        if (isSoundEnabled) {
+          const totalCompletions = completedSections.rows.length + completedSections.columns.length + completedSections.boxes.length;
+          if (totalCompletions > 1) {
+            // Multiple completions - play elaborate sound
+            playMultipleCompletionSound();
+          } else {
+            // Single completion - play appropriate sound
+            playCompletionSound(completedSections);
+          }
+        }
+        
+        // Clear the glow after animation duration
+        setTimeout(() => {
+          setGlowingCompletions({
+            rows: [],
+            columns: [],
+            boxes: []
+          });
+        }, 1200); // Match CSS animation duration (1.2s)
+      }
     }
 
     // Check if game is complete
@@ -312,6 +382,28 @@ function App() {
       if (isGridValid(newGrid)) {
         setGameStatus('completed');
         setIsTimerRunning(false);
+        
+        // Record the completion and show popup
+        const recordData = addGameRecord(difficulty, timer);
+        const difficultyRecord = getDifficultyRecord(difficulty);
+        
+        setCompletionData({
+          difficulty,
+          timer,
+          lives,
+          isNewRecord: recordData.isNewRecord,
+          bestTime: recordData.bestTime,
+          totalGamesPlayed: recordData.totalGames,
+          averageTime: recordData.averageTime
+        });
+        
+        // Clear saved game since it's completed
+        localStorage.removeItem('sudoku-game-state');
+        
+        // Show completion popup after a brief delay for better UX
+        setTimeout(() => {
+          setShowCompletionPopup(true);
+        }, 500);
       } else {
         setGameStatus('error');
       }
@@ -344,6 +436,11 @@ function App() {
     setLives(3);
     setIsShaking(false);
     setIsPaused(false);
+    setGlowingCompletions({
+      rows: [],
+      columns: [],
+      boxes: []
+    });
   };
 
   const handleUndo = () => {
@@ -408,13 +505,73 @@ function App() {
     setIsTimerRunning(false);
   };
 
+  const handleShareGame = async () => {
+    if (!grid || !originalGrid || !solution) {
+      console.error('Cannot share: game not properly initialized');
+      setShareMessage('❌ Cannot share: game not ready');
+      setTimeout(() => setShareMessage(''), 3000);
+      return;
+    }
+
+    const gameState = {
+      grid,
+      originalGrid,
+      solution,
+      difficulty,
+      timer,
+      lives,
+      hintLevel,
+      moveHistory,
+      gameStatus,
+      selectedCell,
+      selectedNumber,
+      isPaused,
+      lastSaveTime: Date.now()
+    };
+
+    const shareableUrl = generateShareableUrl(gameState);
+    if (!shareableUrl) {
+      console.error('Failed to generate shareable URL');
+      setShareMessage('❌ Failed to generate share link');
+      setTimeout(() => setShareMessage(''), 3000);
+      return;
+    }
+
+    try {
+      // Always copy to clipboard
+      await navigator.clipboard.writeText(shareableUrl);
+      setShareMessage('✅ Game link copied to clipboard!');
+      setTimeout(() => setShareMessage(''), 3000);
+    } catch (error) {
+      console.error('Failed to copy to clipboard:', error);
+      // Fallback: show the URL in the message
+      setShareMessage('⚠️ Copy failed. Share this URL: ' + shareableUrl.substring(0, 50) + '...');
+      setTimeout(() => setShareMessage(''), 5000);
+    }
+  };
+
+  const handleCompletionNewGame = (selectedDifficulty) => {
+    setShowCompletionPopup(false);
+    if (selectedDifficulty) {
+      // Start new game with specific difficulty
+      startNewGame(selectedDifficulty);
+    } else {
+      // Show difficulty popup
+      setShowDifficultyPopup(true);
+    }
+  };
+
+  const handleCompletionShare = () => {
+    handleShareGame();
+  };
+
   const formatTime = (seconds) => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
-  if (!grid && !isAnimating) {
+  if (!grid && !isAnimating && !showDifficultyPopup && !showContinuePopup) {
     return <div className="loading">Loading...</div>;
   }
 
@@ -422,9 +579,19 @@ function App() {
 
   return (
     <>
-      <div className={`app ${gameStatus === 'game-over' ? 'app-game-over-blurred' : ''} ${showContinuePopup ? 'app-blurred' : ''}`}>
+      <div className={`app ${gameStatus === 'game-over' ? 'app-game-over-blurred' : ''} ${showContinuePopup || showCompletionPopup ? 'app-blurred' : ''}`}>
         <header className="app-header">
           <div className="header-left">
+            <IconButton
+              onClick={() => setIsDrawerOpen(true)}
+              sx={{ 
+                color: '#2d3748',
+                marginRight: '8px',
+                '&:hover': { backgroundColor: 'rgba(45, 55, 72, 0.1)' }
+              }}
+            >
+              <Menu />
+            </IconButton>
             <div className="difficulty-display">
               <span className="difficulty-value">
                 {difficulty.charAt(0).toUpperCase() + difficulty.slice(1)}
@@ -455,6 +622,7 @@ function App() {
               onCellClick={handleCellClick}
               hintLevel={hintLevel}
               isAnimating={isAnimating}
+              shakingCompletions={glowingCompletions}
             />
 
             <DigitButtons
@@ -477,24 +645,6 @@ function App() {
               </button>
               
               <button 
-                className="control-button"
-                onClick={handleNewGameClick}
-                disabled={isAnimating}
-                title="New Game"
-              >
-                <Add />
-              </button>
-              
-              <button 
-                className="control-button"
-                onClick={handleResetClick}
-                disabled={isAnimating}
-                title="Reset"
-              >
-                <Refresh />
-              </button>
-              
-              <button 
                 className={getHintButtonClass()}
                 onClick={handleHintClick}
                 disabled={isAnimating}
@@ -503,6 +653,13 @@ function App() {
                 {getHintIcon()}
               </button>
             </div>
+
+            {/* Share Message */}
+            {shareMessage && (
+              <div className="share-message">
+                {shareMessage}
+              </div>
+            )}
           </div>
 
           {/* Pause Overlay */}
@@ -530,6 +687,113 @@ function App() {
           onConfirm={handleResetConfirm}
         />
       </div>
+
+      {/* Left Drawer */}
+      <Drawer
+        anchor="left"
+        open={isDrawerOpen}
+        onClose={() => setIsDrawerOpen(false)}
+        sx={{
+          '& .MuiDrawer-paper': {
+            width: 280,
+            backgroundColor: '#f8f9fa',
+            borderRight: '1px solid #e2e8f0',
+          },
+        }}
+      >
+        <Box sx={{ p: 2, borderBottom: '1px solid #e2e8f0' }}>
+          <Typography variant="h6" sx={{ fontWeight: 600, color: '#2d3748' }}>
+            Game Controls
+          </Typography>
+        </Box>
+        
+        <List sx={{ pt: 1 }}>
+          <ListItem disablePadding>
+            <ListItemButton
+              onClick={() => {
+                handleNewGameClick();
+                setIsDrawerOpen(false);
+              }}
+              disabled={isAnimating}
+            >
+              <ListItemIcon>
+                <Add sx={{ color: '#4299e1' }} />
+              </ListItemIcon>
+              <ListItemText 
+                primary="New Game" 
+                primaryTypographyProps={{ fontWeight: 500 }}
+              />
+            </ListItemButton>
+          </ListItem>
+
+          <ListItem disablePadding>
+            <ListItemButton
+              onClick={() => {
+                handleResetClick();
+                setIsDrawerOpen(false);
+              }}
+              disabled={isAnimating}
+            >
+              <ListItemIcon>
+                <Refresh sx={{ color: '#ed8936' }} />
+              </ListItemIcon>
+              <ListItemText 
+                primary="Reset Game" 
+                primaryTypographyProps={{ fontWeight: 500 }}
+              />
+            </ListItemButton>
+          </ListItem>
+
+          <ListItem disablePadding>
+            <ListItemButton
+              onClick={() => {
+                handleShareGame();
+                setIsDrawerOpen(false);
+              }}
+              disabled={isAnimating || !grid || !originalGrid}
+            >
+              <ListItemIcon>
+                <Share sx={{ color: '#38b2ac' }} />
+              </ListItemIcon>
+              <ListItemText 
+                primary="Share Game" 
+                primaryTypographyProps={{ fontWeight: 500 }}
+              />
+            </ListItemButton>
+          </ListItem>
+
+          <Divider sx={{ my: 1 }} />
+
+          <ListItem disablePadding>
+            <ListItemButton
+              onClick={() => {
+                setIsSoundEnabled(!isSoundEnabled);
+              }}
+            >
+              <ListItemIcon>
+                {isSoundEnabled ? (
+                  <VolumeUp sx={{ color: '#48bb78' }} />
+                ) : (
+                  <VolumeOff sx={{ color: '#a0aec0' }} />
+                )}
+              </ListItemIcon>
+              <ListItemText 
+                primary={isSoundEnabled ? "Sound On" : "Sound Off"}
+                primaryTypographyProps={{ fontWeight: 500 }}
+              />
+            </ListItemButton>
+          </ListItem>
+        </List>
+
+        <Box sx={{ mt: 'auto', p: 2, borderTop: '1px solid #e2e8f0' }}>
+          <Typography variant="body2" sx={{ color: '#718096', textAlign: 'center' }}>
+            Difficulty: {difficulty.charAt(0).toUpperCase() + difficulty.slice(1)}
+          </Typography>
+          <Typography variant="body2" sx={{ color: '#718096', textAlign: 'center', mt: 0.5 }}>
+            Lives: {lives} • Hints: {hintLevel}
+          </Typography>
+        </Box>
+      </Drawer>
 
       {/* Game Over Overlay - Outside app container to avoid blur */}
       {gameStatus === 'game-over' && (
@@ -582,7 +846,25 @@ function App() {
         }}
         onSelectDifficulty={handleDifficultySelect}
         currentDifficulty={difficulty}
+        canClose={!!(grid && originalGrid)} // Only allow closing if there's an existing game
       />
+
+      {/* Completion Popup - Outside app container to avoid blur */}
+      {completionData && (
+        <CompletionPopup
+          isOpen={showCompletionPopup}
+          onClose={() => setShowCompletionPopup(false)}
+          onNewGame={handleCompletionNewGame}
+          onShare={handleCompletionShare}
+          difficulty={completionData.difficulty}
+          timer={completionData.timer}
+          lives={completionData.lives}
+          isNewRecord={completionData.isNewRecord}
+          bestTime={completionData.bestTime}
+          totalGamesPlayed={completionData.totalGamesPlayed}
+          averageTime={completionData.averageTime}
+        />
+      )}
     </>
   );
 }

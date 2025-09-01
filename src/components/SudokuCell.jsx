@@ -11,7 +11,8 @@ const SudokuCell = ({
   onClick,
   row,
   col,
-  isAnimating
+  isAnimating,
+  shouldGlow
 }) => {
   return (
     <div className="cell-container">
@@ -22,7 +23,8 @@ const SudokuCell = ({
                     ${isSameNumber ? 'same-number' : ''}
                     ${isRelatedToSameNumber ? 'related-to-same-number' : ''}
                     ${isError ? 'error' : ''}
-                    ${isAnimating ? 'animating' : ''}`}
+                    ${isAnimating ? 'animating' : ''}
+                    ${shouldGlow ? 'glow-completed' : ''}`}
         onClick={() => !isAnimating && onClick(row, col)}
         disabled={isAnimating}
       >

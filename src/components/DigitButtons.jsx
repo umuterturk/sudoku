@@ -18,7 +18,7 @@ const DigitButtons = ({ onDigitSelect, selectedCell, grid, originalGrid, hintLev
 
   const isDigitDisabled = (digit) => {
     if (disabled) return true; // Disable all buttons when animation is running
-    if (!selectedCell) return true;
+    if (!selectedCell || !originalGrid) return true;
     const [row, col] = selectedCell;
     if (originalGrid[row][col] !== 0) return true; // Can't change original cells
     
@@ -35,7 +35,7 @@ const DigitButtons = ({ onDigitSelect, selectedCell, grid, originalGrid, hintLev
 
   const isClearDisabled = () => {
     if (disabled) return true; // Disable clear button when animation is running
-    if (!selectedCell) return true;
+    if (!selectedCell || !grid || !originalGrid) return true;
     const [row, col] = selectedCell;
     // Disable if it's an original cell or if the cell is already empty
     return originalGrid[row][col] !== 0 || grid[row][col] === 0;
@@ -45,6 +45,8 @@ const DigitButtons = ({ onDigitSelect, selectedCell, grid, originalGrid, hintLev
     if (digit === 'X') return null;
     // For arcade and hard levels, return empty string instead of null
     if (hintLevel === 'arcade' || hintLevel === 'hard') return '';
+    // If grid is null (during initialization), return empty string
+    if (!grid) return '';
     
     let count = 0;
     for (let row = 0; row < 9; row++) {
@@ -62,7 +64,7 @@ const DigitButtons = ({ onDigitSelect, selectedCell, grid, originalGrid, hintLev
   };
 
   const isValidDigitForSelectedCell = (digit) => {
-    if (digit === 'X' || hintLevel !== 'novice' || !selectedCell) return false;
+    if (digit === 'X' || hintLevel !== 'novice' || !selectedCell || !grid) return false;
     
     const [row, col] = selectedCell;
     if (grid[row][col] !== 0) return false; // Only for empty cells

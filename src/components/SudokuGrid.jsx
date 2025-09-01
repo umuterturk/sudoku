@@ -1,6 +1,6 @@
 import React from 'react';
 import SudokuCell from './SudokuCell';
-import { isValidMove } from '../utils/sudokuUtils';
+import { isValidMove, getBoxIndex } from '../utils/sudokuUtils';
 
 const SudokuGrid = ({ 
   grid, 
@@ -9,7 +9,8 @@ const SudokuGrid = ({
   selectedNumber,
   onCellClick,
   hintLevel,
-  isAnimating
+  isAnimating,
+  shakingCompletions
 }) => {
   const isOriginalCell = (row, col) => {
     if (isAnimating) return false; // During animation, no cells are "original"
@@ -83,6 +84,28 @@ const SudokuGrid = ({
     return !isValidMove(tempGrid, row, col, num);
   };
 
+  // Check if a cell should shake due to completed row
+  const shouldShakeForRow = (row) => {
+    return shakingCompletions && shakingCompletions.rows && shakingCompletions.rows.includes(row);
+  };
+
+  // Check if a cell should shake due to completed column
+  const shouldShakeForColumn = (col) => {
+    return shakingCompletions && shakingCompletions.columns && shakingCompletions.columns.includes(col);
+  };
+
+  // Check if a cell should shake due to completed box
+  const shouldShakeForBox = (row, col) => {
+    if (!shakingCompletions || !shakingCompletions.boxes) return false;
+    const boxIndex = getBoxIndex(row, col);
+    return shakingCompletions.boxes.includes(boxIndex);
+  };
+
+  // Check if a cell should have glow animation
+  const shouldGlow = (row, col) => {
+    return shouldShakeForRow(row) || shouldShakeForColumn(col) || shouldShakeForBox(row, col);
+  };
+
 
 
   // Handle null grid case
@@ -108,6 +131,7 @@ const SudokuGrid = ({
               row={rowIndex}
               col={colIndex}
               isAnimating={isAnimating}
+              shouldGlow={shouldGlow(rowIndex, colIndex)}
             />
           ))}
         </div>

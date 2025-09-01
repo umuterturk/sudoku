@@ -1,6 +1,6 @@
 import React from 'react';
 
-const DifficultyPopup = ({ isOpen, onClose, onSelectDifficulty, currentDifficulty }) => {
+const DifficultyPopup = ({ isOpen, onClose, onSelectDifficulty, currentDifficulty, canClose = true }) => {
   if (!isOpen) return null;
 
   const difficulties = [
@@ -16,7 +16,13 @@ const DifficultyPopup = ({ isOpen, onClose, onSelectDifficulty, currentDifficult
   };
 
   const handleOverlayClick = (e) => {
-    if (e.target === e.currentTarget) {
+    if (e.target === e.currentTarget && canClose) {
+      onClose();
+    }
+  };
+
+  const handleCloseClick = () => {
+    if (canClose) {
       onClose();
     }
   };
@@ -26,7 +32,9 @@ const DifficultyPopup = ({ isOpen, onClose, onSelectDifficulty, currentDifficult
       <div className="difficulty-popup">
         <div className="popup-header">
           <h2>Select Difficulty</h2>
-          <button className="popup-close" onClick={onClose}>×</button>
+          {canClose && (
+            <button className="popup-close" onClick={handleCloseClick}>×</button>
+          )}
         </div>
         
         <div className="difficulty-options">
@@ -43,9 +51,11 @@ const DifficultyPopup = ({ isOpen, onClose, onSelectDifficulty, currentDifficult
         </div>
         
         <div className="popup-footer">
-          <button className="btn btn-secondary" onClick={onClose}>
-            Cancel
-          </button>
+          {canClose && (
+            <button className="btn btn-secondary" onClick={handleCloseClick}>
+              Cancel
+            </button>
+          )}
         </div>
       </div>
     </div>
