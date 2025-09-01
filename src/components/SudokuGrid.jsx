@@ -26,6 +26,19 @@ const SudokuGrid = ({
     
     const [selectedRow, selectedCol] = selectedCell;
     
+    // Don't show highlights if the selected cell contains an invalid value
+    const selectedCellValue = grid[selectedRow][selectedCol];
+    if (selectedCellValue !== 0) {
+      // Check if the selected cell's value is valid
+      const tempGrid = grid.map(r => [...r]);
+      tempGrid[selectedRow][selectedCol] = 0; // Temporarily remove to check validity
+      const isSelectedCellValid = isValidMove(tempGrid, selectedRow, selectedCol, selectedCellValue);
+      
+      if (!isSelectedCellValid) {
+        return false; // Don't show any highlights if selected cell has invalid value
+      }
+    }
+    
     // Hard level: only direct highlights (row, column, 3x3 box)
     if (hintLevel === 'hard') {
       return row === selectedRow || 
@@ -45,6 +58,22 @@ const SudokuGrid = ({
     if (isAnimating) return false; // No number highlighting during animation
     if (!selectedNumber || grid[row][col] === 0) return false;
     if (hintLevel === 'arcade') return false; // No number highlighting in arcade mode
+    
+    // Don't show same number highlights if the selected cell contains an invalid value
+    if (selectedCell) {
+      const [selectedRow, selectedCol] = selectedCell;
+      const selectedCellValue = grid[selectedRow][selectedCol];
+      if (selectedCellValue !== 0) {
+        const tempGrid = grid.map(r => [...r]);
+        tempGrid[selectedRow][selectedCol] = 0;
+        const isSelectedCellValid = isValidMove(tempGrid, selectedRow, selectedCol, selectedCellValue);
+        
+        if (!isSelectedCellValid) {
+          return false; // Don't show same number highlights if selected cell has invalid value
+        }
+      }
+    }
+    
     return grid[row][col] === selectedNumber;
   };
 
@@ -53,10 +82,21 @@ const SudokuGrid = ({
     if (!selectedNumber || !selectedCell) return false;
     if (hintLevel === 'arcade' || hintLevel === 'hard') return false; // No indirect highlighting for arcade/hard
     
+    // Don't show related highlights if the selected cell contains an invalid value
+    const [selectedRow, selectedCol] = selectedCell;
+    const selectedCellValue = grid[selectedRow][selectedCol];
+    if (selectedCellValue !== 0) {
+      const tempGrid = grid.map(r => [...r]);
+      tempGrid[selectedRow][selectedCol] = 0;
+      const isSelectedCellValid = isValidMove(tempGrid, selectedRow, selectedCol, selectedCellValue);
+      
+      if (!isSelectedCellValid) {
+        return false; // Don't show related highlights if selected cell has invalid value
+      }
+    }
+    
     // Don't highlight cells that contain the same number (they get their own styling)
     if (grid[row][col] === selectedNumber) return false;
-    
-    const [selectedRow, selectedCol] = selectedCell;
     
     // Find all positions where the selected number appears (excluding the clicked cell)
     const sameNumberPositions = [];

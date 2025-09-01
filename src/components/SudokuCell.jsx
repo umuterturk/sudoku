@@ -21,6 +21,7 @@ const SudokuCell = ({
       <button
         className={`sudoku-cell ${isOriginal ? 'original' : 'user'} 
                     ${isSelected ? 'selected' : ''} 
+                    ${isSelected && value === 0 ? 'empty-cell' : ''}
                     ${isHighlighted ? 'highlighted' : ''}
                     ${isSameNumber ? 'same-number' : ''}
                     ${isRelatedToSameNumber ? 'related-to-same-number' : ''}

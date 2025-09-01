@@ -58,6 +58,16 @@ export const preloadPuzzleDatabases = async (difficulties = ['medium']) => {
   await Promise.all(promises);
 };
 
+// Get difficulty rating based on clue count
+const getDifficultyRating = (clueCount) => {
+  if (clueCount >= 36) return 'Very Easy';
+  if (clueCount >= 32) return 'Easy';
+  if (clueCount >= 28) return 'Medium';
+  if (clueCount >= 24) return 'Hard';
+  if (clueCount >= 20) return 'Very Hard';
+  return 'Expert';
+};
+
 // Check if a number is valid in a specific position
 export const isValidMove = (grid, row, col, num) => {
   // Check row
@@ -91,25 +101,37 @@ export const isValidMove = (grid, row, col, num) => {
 
 // Solve the Sudoku using backtracking
 export const solveSudoku = (grid) => {
-  for (let row = 0; row < 9; row++) {
-    for (let col = 0; col < 9; col++) {
-      if (grid[row][col] === 0) {
-        for (let num = 1; num <= 9; num++) {
-          if (isValidMove(grid, row, col, num)) {
-            grid[row][col] = num;
-            
-            if (solveSudoku(grid)) {
-              return true;
+  let iterationCount = 0;
+  let maxDepth = 0;
+  
+  const solve = (grid, depth = 0) => {
+    iterationCount++;
+    maxDepth = Math.max(maxDepth, depth);
+    
+    for (let row = 0; row < 9; row++) {
+      for (let col = 0; col < 9; col++) {
+        if (grid[row][col] === 0) {
+          for (let num = 1; num <= 9; num++) {
+            if (isValidMove(grid, row, col, num)) {
+              grid[row][col] = num;
+              
+              if (solve(grid, depth + 1)) {
+                return true;
+              }
+              
+              grid[row][col] = 0;
             }
-            
-            grid[row][col] = 0;
           }
+          return false;
         }
-        return false;
       }
     }
-  }
-  return true;
+    return true;
+  };
+  
+  const result = solve(grid);
+  console.log(`Sudoku solved in ${iterationCount} iterations (max depth: ${maxDepth})`);
+  return result;
 };
 
 // Convert 81-character puzzle string to 9x9 grid
@@ -129,9 +151,14 @@ export const stringToGrid = (puzzleString) => {
 // Generate a complete Sudoku grid
 export const generateCompleteGrid = () => {
   const grid = Array(9).fill().map(() => Array(9).fill(0));
+  let iterationCount = 0;
+  let maxDepth = 0;
   
   // Fill the grid using backtracking with randomization
-  const fillGrid = (grid) => {
+  const fillGrid = (grid, depth = 0) => {
+    iterationCount++;
+    maxDepth = Math.max(maxDepth, depth);
+    
     for (let row = 0; row < 9; row++) {
       for (let col = 0; col < 9; col++) {
         if (grid[row][col] === 0) {
@@ -146,7 +173,7 @@ export const generateCompleteGrid = () => {
             if (isValidMove(grid, row, col, num)) {
               grid[row][col] = num;
               
-              if (fillGrid(grid)) {
+              if (fillGrid(grid, depth + 1)) {
                 return true;
               }
               
@@ -161,6 +188,7 @@ export const generateCompleteGrid = () => {
   };
   
   fillGrid(grid);
+  console.log(`Complete Sudoku grid generated in ${iterationCount} iterations (max depth: ${maxDepth})`);
   return grid;
 };
 
@@ -178,9 +206,18 @@ export const generatePuzzle = async (difficulty = 'medium') => {
     const randomIndex = Math.floor(Math.random() * puzzleDatabase.length);
     const puzzleString = puzzleDatabase[randomIndex];
     
-    // Debug: Log which difficulty and puzzle we're using
+    // Log comprehensive database information
     const clueCount = puzzleString.split('').filter(char => char !== '0').length;
-    console.log(`Generated ${difficulty} puzzle with ${clueCount} clues from database of ${puzzleDatabase.length} puzzles`);
+    const emptyCount = 81 - clueCount;
+    
+    console.log(`🎯 DIFFICULTY SELECTED: ${difficulty.toUpperCase()}`);
+    console.log(`📊 Database Info:`);
+    console.log(`   • Total puzzles in ${difficulty} database: ${puzzleDatabase.length}`);
+    console.log(`   • Selected puzzle index: ${randomIndex + 1}/${puzzleDatabase.length}`);
+    console.log(`   • Puzzle string: ${puzzleString}`);
+    console.log(`   • Clues provided: ${clueCount}/81 (${Math.round(clueCount/81*100)}%)`);
+    console.log(`   • Empty cells: ${emptyCount}/81 (${Math.round(emptyCount/81*100)}%)`);
+    console.log(`   • Difficulty rating: ${getDifficultyRating(clueCount)}`);
     
     // Convert the puzzle string to a 9x9 grid
     const puzzle = stringToGrid(puzzleString);
@@ -202,6 +239,8 @@ export const generatePuzzle = async (difficulty = 'medium') => {
 
 // Fallback puzzle generation using the original algorithm
 const generateFallbackPuzzle = (difficulty = 'medium') => {
+  console.log(`⚠️  FALLBACK MODE: Generating ${difficulty} puzzle algorithmically (database unavailable)`);
+  
   const completeGrid = generateCompleteGrid();
   const puzzle = completeGrid.map(row => [...row]);
   
@@ -214,6 +253,13 @@ const generateFallbackPuzzle = (difficulty = 'medium') => {
   };
   
   const cellsToRemove = difficultyLevels[difficulty] || 50;
+  const cluesRemaining = 81 - cellsToRemove;
+  
+  console.log(`🔧 Fallback Generation Info:`);
+  console.log(`   • Difficulty: ${difficulty}`);
+  console.log(`   • Cells to remove: ${cellsToRemove}`);
+  console.log(`   • Clues remaining: ${cluesRemaining}/81 (${Math.round(cluesRemaining/81*100)}%)`);
+  console.log(`   • Difficulty rating: ${getDifficultyRating(cluesRemaining)}`);
   
   // Randomly remove numbers
   let removed = 0;
