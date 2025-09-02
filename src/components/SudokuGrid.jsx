@@ -12,7 +12,8 @@ const SudokuGrid = ({
   isAnimating,
   shakingCompletions,
   notes,
-  isNotesMode
+  isNotesMode,
+  highlightedCells = []
 }) => {
   const isOriginalCell = (row, col) => {
     if (isAnimating) return false; // During animation, no cells are "original"
@@ -148,6 +149,11 @@ const SudokuGrid = ({
     return shouldShakeForRow(row) || shouldShakeForColumn(col) || shouldShakeForBox(row, col);
   };
 
+  // Check if a cell should be highlighted green (for single possibility hint)
+  const isGreenHighlighted = (row, col) => {
+    return highlightedCells.some(cell => cell.row === row && cell.col === col);
+  };
+
 
 
   // Handle null grid case
@@ -176,6 +182,7 @@ const SudokuGrid = ({
               shouldGlow={shouldGlow(rowIndex, colIndex)}
               notes={notes ? notes[rowIndex][colIndex] : []}
               isNotesMode={isNotesMode}
+              isGreenHighlighted={isGreenHighlighted(rowIndex, colIndex)}
             />
           ))}
         </div>

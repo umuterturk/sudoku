@@ -204,27 +204,14 @@ export const generatePuzzle = async (difficulty = 'medium') => {
     
     // Select a random puzzle from the database
     const randomIndex = Math.floor(Math.random() * puzzleDatabase.length);
-    const puzzleString = puzzleDatabase[randomIndex];
+    const puzzleEntry = puzzleDatabase[randomIndex];
     
-    // Log comprehensive database information
-    const clueCount = puzzleString.split('').filter(char => char !== '0').length;
-    const emptyCount = 81 - clueCount;
+    // Extract puzzle string, solution string, and rating from the new format
+    const [puzzleString, solutionString, rating] = puzzleEntry;
     
-    console.log(`🎯 DIFFICULTY SELECTED: ${difficulty.toUpperCase()}`);
-    console.log(`📊 Database Info:`);
-    console.log(`   • Total puzzles in ${difficulty} database: ${puzzleDatabase.length}`);
-    console.log(`   • Selected puzzle index: ${randomIndex + 1}/${puzzleDatabase.length}`);
-    console.log(`   • Puzzle string: ${puzzleString}`);
-    console.log(`   • Clues provided: ${clueCount}/81 (${Math.round(clueCount/81*100)}%)`);
-    console.log(`   • Empty cells: ${emptyCount}/81 (${Math.round(emptyCount/81*100)}%)`);
-    console.log(`   • Difficulty rating: ${getDifficultyRating(clueCount)}`);
-    
-    // Convert the puzzle string to a 9x9 grid
+    // Convert the puzzle and solution strings to 9x9 grids
     const puzzle = stringToGrid(puzzleString);
-    
-    // Generate the solution by solving the puzzle
-    const solution = puzzle.map(row => [...row]); // Create a copy
-    solveSudoku(solution);
+    const solution = stringToGrid(solutionString);
     
     return {
       puzzle,
@@ -239,8 +226,6 @@ export const generatePuzzle = async (difficulty = 'medium') => {
 
 // Fallback puzzle generation using the original algorithm
 const generateFallbackPuzzle = (difficulty = 'medium') => {
-  console.log(`⚠️  FALLBACK MODE: Generating ${difficulty} puzzle algorithmically (database unavailable)`);
-  
   const completeGrid = generateCompleteGrid();
   const puzzle = completeGrid.map(row => [...row]);
   
@@ -253,13 +238,6 @@ const generateFallbackPuzzle = (difficulty = 'medium') => {
   };
   
   const cellsToRemove = difficultyLevels[difficulty] || 50;
-  const cluesRemaining = 81 - cellsToRemove;
-  
-  console.log(`🔧 Fallback Generation Info:`);
-  console.log(`   • Difficulty: ${difficulty}`);
-  console.log(`   • Cells to remove: ${cellsToRemove}`);
-  console.log(`   • Clues remaining: ${cluesRemaining}/81 (${Math.round(cluesRemaining/81*100)}%)`);
-  console.log(`   • Difficulty rating: ${getDifficultyRating(cluesRemaining)}`);
   
   // Randomly remove numbers
   let removed = 0;
@@ -550,4 +528,36 @@ export const addGameRecord = (difficulty, completionTime) => {
 export const getDifficultyRecord = (difficulty) => {
   const records = getRecords();
   return records[difficulty] || { bestTime: null, totalGames: 0, totalTime: 0, averageTime: null };
+};
+
+// Find all empty cells that have only one valid possibility
+export const findCellsWithOnePossibility = (grid) => {
+  const cellsWithOnePossibility = [];
+  
+  for (let row = 0; row < 9; row++) {
+    for (let col = 0; col < 9; col++) {
+      // Skip cells that are already filled
+      if (grid[row][col] !== 0) continue;
+      
+      const possibilities = [];
+      
+      // Check each number 1-9 to see if it's valid in this position
+      for (let num = 1; num <= 9; num++) {
+        if (isValidMove(grid, row, col, num)) {
+          possibilities.push(num);
+        }
+      }
+      
+      // If there's exactly one possibility, add this cell to our list
+      if (possibilities.length === 1) {
+        cellsWithOnePossibility.push({
+          row,
+          col,
+          number: possibilities[0]
+        });
+      }
+    }
+  }
+  
+  return cellsWithOnePossibility;
 };

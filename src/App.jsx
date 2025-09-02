@@ -6,7 +6,7 @@ import ResetConfirmationPopup from './components/ResetConfirmationPopup';
 import ContinueGamePopup from './components/ContinueGamePopup';
 import CompletionPopup from './components/CompletionPopup';
 import Hearts from './components/Hearts';
-import { generatePuzzle, isGridComplete, isGridValid, isValidMove, preloadPuzzleDatabase, stringToGrid, parseGameFromUrl, generateShareableUrl, addGameRecord, getDifficultyRecord, getCompletedSections } from './utils/sudokuUtils';
+import { generatePuzzle, isGridComplete, isGridValid, isValidMove, preloadPuzzleDatabase, stringToGrid, parseGameFromUrl, generateShareableUrl, addGameRecord, getDifficultyRecord, getCompletedSections, findCellsWithOnePossibility } from './utils/sudokuUtils';
 import { playCompletionSound, playMultipleCompletionSound } from './utils/audioUtils';
 import { Undo, Add, Refresh, Lightbulb, LightbulbOutlined, Circle, FiberManualRecord, Pause, PlayArrow, Share, Menu, VolumeUp, VolumeOff, Edit, EditOutlined } from '@mui/icons-material';
 import { Drawer, List, ListItem, ListItemButton, ListItemIcon, ListItemText, IconButton, Divider, Box, Typography } from '@mui/material';
@@ -54,6 +54,8 @@ function App() {
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [isNotesMode, setIsNotesMode] = useState(false);
   const [notes, setNotes] = useState(Array(9).fill().map(() => Array(9).fill().map(() => [])));
+  const [highlightedCells, setHighlightedCells] = useState([]);
+  const [longPressTimer, setLongPressTimer] = useState(null);
   
   // Cache for animation puzzles to avoid re-loading
   const [animationPuzzleCache, setAnimationPuzzleCache] = useState(new Map());
@@ -88,12 +90,9 @@ function App() {
   };
 
   const idspispopd = () => {
-    console.log('👻 IDSPISPOPD activated! No-clipping through walls... err, revealing solution!');
     if (solution) {
-      console.log('🔍 Solution grid:', solution);
-      console.table(solution);
-    } else {
-      console.log('❌ No solution available - start a game first!');
+      // Show solution without logging it to console
+      alert('Solution revealed in browser developer tools (F12)');
     }
   };
 
@@ -129,7 +128,7 @@ function App() {
       console.log('🎮 Available cheat codes:');
       console.log('• idkfa() - Restore lives to 3 (DOOM: all weapons & ammo)');
       console.log('• iddqd() - God mode: 999 lives (DOOM: invincibility)');
-      console.log('• idspispopd() - Show solution in console (DOOM: no-clipping)');
+      console.log('• idspispopd() - Reveal solution (DOOM: no-clipping)');
       console.log('• cheats() - Show this help');
     };
     
@@ -286,7 +285,9 @@ function App() {
       // Get random puzzles for animation
       for (let i = 0; i < count; i++) {
         const randomIndex = Math.floor(Math.random() * puzzles.length);
-        const puzzleString = puzzles[randomIndex];
+        const puzzleEntry = puzzles[randomIndex];
+        // Extract just the puzzle string from the new format [puzzleString, solutionString, rating]
+        const puzzleString = puzzleEntry[0];
         const puzzleGrid = stringToGrid(puzzleString);
         animationPuzzles.push(puzzleGrid);
       }
@@ -596,6 +597,50 @@ function App() {
     event.target.blur();
   };
 
+  const handleHintLongPress = () => {
+    if (!grid) return;
+    
+    // Find cells with only one possibility
+    const cellsWithOnePossibility = findCellsWithOnePossibility(grid);
+    
+    if (cellsWithOnePossibility.length === 0) {
+      return;
+    }
+    
+    // Highlight these cells in green
+    setHighlightedCells(cellsWithOnePossibility.map(cell => ({
+      row: cell.row,
+      col: cell.col
+    })));
+    
+    // Remove the highlight after 2 seconds
+    setTimeout(() => {
+      setHighlightedCells([]);
+    }, 2000);
+  };
+
+  const handleHintMouseDown = (event) => {
+    event.preventDefault();
+    const timer = setTimeout(() => {
+      handleHintLongPress();
+    }, 800); // 800ms for long press
+    setLongPressTimer(timer);
+  };
+
+  const handleHintMouseUp = (event) => {
+    if (longPressTimer) {
+      clearTimeout(longPressTimer);
+      setLongPressTimer(null);
+    }
+  };
+
+  const handleHintMouseLeave = (event) => {
+    if (longPressTimer) {
+      clearTimeout(longPressTimer);
+      setLongPressTimer(null);
+    }
+  };
+
   const getHintIcon = () => {
     return <Lightbulb />;
   };
@@ -756,6 +801,7 @@ function App() {
               shakingCompletions={glowingCompletions}
               notes={notes}
               isNotesMode={isNotesMode}
+              highlightedCells={highlightedCells}
             />
 
             <DigitButtons
@@ -804,8 +850,13 @@ function App() {
                 <button 
                   className={getHintButtonClass()}
                   onClick={handleHintClick}
+                  onMouseDown={handleHintMouseDown}
+                  onMouseUp={handleHintMouseUp}
+                  onMouseLeave={handleHintMouseLeave}
+                  onTouchStart={handleHintMouseDown}
+                  onTouchEnd={handleHintMouseUp}
                   disabled={isAnimating}
-                  title={`Hint Level: ${hintLevel.charAt(0).toUpperCase() + hintLevel.slice(1)}`}
+                  title={`Hint Level: ${hintLevel.charAt(0).toUpperCase() + hintLevel.slice(1)} (Long press to show cells with one possibility)`}
                 >
                   {getHintIcon()}
                 </button>
