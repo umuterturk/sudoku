@@ -11,6 +11,7 @@ const ContinueGamePopup = React.lazy(() => import('./components/ContinueGamePopu
 const CompletionPopup = React.lazy(() => import('./components/CompletionPopup'));
 import { generatePuzzle, isGridComplete, isGridValid, isValidMove, loadPuzzleDatabase, enableFlightMode, isFlightModeEnabled, isFlightModeEnabledSync, disableFlightMode, refreshFlightModeCacheIfNeeded, getFlightModeCacheStats, getRandomAnimationPuzzles, stringToGrid, parseGameFromUrl, generateShareableUrl, addGameRecord, getDifficultyRecord, getCompletedSections, findCellsWithOnePossibility, idclipCheat } from './utils/sudokuUtils';
 import { playCompletionSound, playMultipleCompletionSound, createCompletionSound } from './utils/audioUtils';
+import { initGA, trackPageView, trackGameStarted, trackGameCompleted, trackGameOver, trackHintUsed, trackFlightModeToggle } from './utils/analytics';
 import { Undo, Add, Refresh, Lightbulb, LightbulbOutlined, Circle, FiberManualRecord, Pause, PlayArrow, Share, Menu, VolumeUp, VolumeOff, Edit, EditOutlined, FlightTakeoff, FlightLand } from '@mui/icons-material';
 import { Drawer, List, ListItem, ListItemButton, ListItemIcon, ListItemText, IconButton, Divider, Box, Typography } from '@mui/material';
 import './App.css';
@@ -336,6 +337,11 @@ function App() {
     };
 
     console.log('🚀 Sudoku app initializing...');
+    
+    // Initialize Google Analytics
+    initGA();
+    trackPageView('Sudoku Game - Home');
+    
     initializeGame();
 
     // Check if flight mode is enabled and handle daily refresh
@@ -488,6 +494,10 @@ function App() {
       
       // Start game animation
       await animateGameStart(puzzle, puzzleSolution, selectedDifficulty);
+      
+      // Track game started event
+      trackGameStarted(selectedDifficulty);
+      
       console.log(`✨ Game started successfully!`);
     } catch (error) {
       console.error('Failed to start new game:', error);
@@ -588,6 +598,8 @@ function App() {
         if (newLives < 0) {
           setGameStatus('game-over');
           setIsTimerRunning(false);
+          // Track game over event
+          trackGameOver(difficulty, timer);
         }
         return newLives;
       });
@@ -632,6 +644,9 @@ function App() {
         if (isSoundEnabled) {
           createCompletionSound();
         }
+        
+        // Track game completion
+        trackGameCompleted(difficulty, timer, lives);
         
         // Record the completion and show popup
         const recordData = addGameRecord(difficulty, timer);
@@ -727,9 +742,13 @@ function App() {
     const hintLevels = ['medium', 'novice', 'arcade', 'hard'];
     const currentIndex = hintLevels.indexOf(hintLevel);
     const nextIndex = (currentIndex + 1) % hintLevels.length;
-    setHintLevel(hintLevels[nextIndex]);
+    const newHintLevel = hintLevels[nextIndex];
+    setHintLevel(newHintLevel);
     
-    console.log('🔄 Hint level changed to:', hintLevels[nextIndex]);
+    // Track hint usage
+    trackHintUsed(newHintLevel, difficulty);
+    
+    console.log('🔄 Hint level changed to:', newHintLevel);
     
     // Remove focus from the button
     event.target.blur();
@@ -941,6 +960,7 @@ function App() {
       try {
         await disableFlightMode();
         setFlightModeEnabled(false);
+        trackFlightModeToggle(false);
         console.log('✅ Flight mode disabled - persistent cache cleared');
       } catch (error) {
         console.error('Error disabling flight mode:', error);
@@ -967,6 +987,7 @@ function App() {
       
       if (success) {
         setFlightModeEnabled(true);
+        trackFlightModeToggle(true);
         setIsDrawerOpen(false); // Close drawer after successful activation
         console.log('✈️ Flight mode enabled! All puzzles cached persistently for offline play.');
       } else {
