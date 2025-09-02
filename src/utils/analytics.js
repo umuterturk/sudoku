@@ -21,12 +21,19 @@ export const initGA = () => {
     }
     window.gtag = gtag;
 
-    // Configure Google Analytics
+    // Configure Google Analytics with proper domain and cookie settings
     gtag('js', new Date());
     gtag('config', GA_TRACKING_ID, {
       page_title: 'Sudoku Game',
       page_location: window.location.href,
-      send_page_view: true
+      send_page_view: true,
+      // Fix cookie domain issues for GitHub Pages and subdomains
+      cookie_domain: 'auto',
+      cookie_flags: 'SameSite=None;Secure',
+      // Additional security and privacy settings
+      anonymize_ip: true,
+      allow_google_signals: false,
+      allow_ad_personalization_signals: false
     });
 
     console.log('📊 Google Analytics initialized successfully');
@@ -43,7 +50,9 @@ export const trackPageView = (page_title = 'Sudoku Game') => {
     window.gtag('config', GA_TRACKING_ID, {
       page_title,
       page_location: window.location.href,
-      send_page_view: true
+      send_page_view: true,
+      // Ensure consistent cookie domain configuration
+      cookie_domain: 'auto'
     });
     console.log('📊 Page view tracked:', page_title);
   } catch (error) {
