@@ -2,11 +2,27 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [
+    react(),
+    // Custom plugin to handle manifest file properly
+    {
+      name: 'manifest-handler',
+      configureServer(server) {
+        server.middlewares.use('/sudoku/manifest.webmanifest', (req, res, next) => {
+          res.setHeader('Content-Type', 'application/manifest+json');
+          next();
+        });
+      }
+    }
+  ],
   base: '/sudoku/',
   server: {
     port: 3000,
-    open: true
+    open: true,
+    // Ensure proper MIME types for manifest files
+    headers: {
+      'Cache-Control': 'no-cache'
+    }
   },
   // GitHub Pages compatibility
   publicDir: 'public',
