@@ -1,4 +1,5 @@
 // Sudoku utility functions
+import persistentCache from './persistentCache.js';
 
 // Cache for loaded puzzle databases to avoid re-importing
 const puzzleCache = new Map();
@@ -10,11 +11,11 @@ const loadingPromises = new Map();
 const MAX_CACHE_SIZE = 6; // Maximum number of difficulty levels to cache
 const CACHE_CLEANUP_THRESHOLD = 5; // Start cleanup when cache reaches this size
 
-// Enhanced puzzle database loader with race condition protection
+// Enhanced puzzle database loader with persistent cache support
 export const loadPuzzleDatabase = async (difficulty) => {
-  // Check if already cached
+  // Check if already cached in memory
   if (puzzleCache.has(difficulty)) {
-    console.log(`✅ ${difficulty} puzzle database loaded from cache`);
+    console.log(`✅ ${difficulty} puzzle database loaded from memory cache`);
     return puzzleCache.get(difficulty);
   }
 
@@ -26,12 +27,28 @@ export const loadPuzzleDatabase = async (difficulty) => {
 
   console.log(`🔄 Loading ${difficulty} puzzle database...`);
 
+  // Try to load from persistent cache first (for flight mode)
+  try {
+    const cachedPuzzles = await persistentCache.getPuzzles(difficulty);
+    if (cachedPuzzles && cachedPuzzles.length > 0) {
+      console.log(`📱 ${difficulty} puzzles loaded from persistent cache (${cachedPuzzles.length} puzzles)`);
+      puzzleCache.set(difficulty, cachedPuzzles);
+      return cachedPuzzles;
+    }
+  } catch (error) {
+    console.warn(`Failed to load from persistent cache for ${difficulty}:`, error);
+  }
+
   // Create loading promise
   const loadingPromise = (async () => {
     try {
       let module;
       switch (difficulty) {
         case 'easy':
+          module = await import('../game_database/easy.js');
+          break;
+        case 'children':
+          // Children mode uses easy puzzles as base
           module = await import('../game_database/easy.js');
           break;
         case 'medium':
@@ -59,6 +76,18 @@ export const loadPuzzleDatabase = async (difficulty) => {
       
       puzzleCache.set(difficulty, puzzles);
       console.log(`✅ ${difficulty} puzzle database loaded successfully (${puzzles.length} puzzles)`);
+      
+      // Store in persistent cache if flight mode is enabled
+      try {
+        const isFlightMode = await persistentCache.isFlightModeCacheValid();
+        if (isFlightMode) {
+          await persistentCache.storePuzzles(difficulty, puzzles);
+          console.log(`💾 ${difficulty} puzzles stored in persistent cache for offline use`);
+        }
+      } catch (error) {
+        console.warn(`Failed to store ${difficulty} puzzles in persistent cache:`, error);
+      }
+      
       return puzzles;
     } catch (error) {
       console.error(`Failed to load ${difficulty} puzzles:`, error);
@@ -136,18 +165,18 @@ export const preloadPuzzleDatabases = async (difficulties = ['medium'], onProgre
   await Promise.all(promises);
 };
 
-// Flight mode: preload all difficulties for offline play
+// Flight mode: preload all difficulties for offline play with persistent storage
 export const enableFlightMode = async (onProgress = null) => {
-  const allDifficulties = ['easy', 'medium', 'hard', 'expert'];
+  const allDifficulties = ['easy', 'children', 'medium', 'hard', 'expert'];
   console.log('🛩️ Enabling flight mode - preloading all puzzle databases...');
   
   try {
-    await preloadPuzzleDatabases(allDifficulties, onProgress);
-    console.log('✈️ Flight mode enabled! All puzzles cached for offline play.');
+    // Enable persistent cache first
+    await persistentCache.enableFlightMode();
     
-    // Store flight mode status
-    localStorage.setItem('sudoku-flight-mode', 'enabled');
-    localStorage.setItem('sudoku-flight-mode-timestamp', Date.now().toString());
+    // Preload all puzzle databases
+    await preloadPuzzleDatabases(allDifficulties, onProgress);
+    console.log('✈️ Flight mode enabled! All puzzles cached persistently for offline play.');
     
     return true;
   } catch (error) {
@@ -156,12 +185,37 @@ export const enableFlightMode = async (onProgress = null) => {
   }
 };
 
-// Check if flight mode is enabled
-export const isFlightModeEnabled = () => {
+// Check if flight mode is enabled (async to check persistent cache)
+export const isFlightModeEnabled = async () => {
+  try {
+    // Check persistent cache first
+    const persistentValid = await persistentCache.isFlightModeCacheValid();
+    if (persistentValid) {
+      return true;
+    }
+    
+    // Fallback to localStorage for backward compatibility
+    const flightMode = localStorage.getItem('sudoku-flight-mode');
+    const timestamp = localStorage.getItem('sudoku-flight-mode-timestamp');
+    
+    if (flightMode === 'enabled' && timestamp) {
+      const enabledTime = parseInt(timestamp);
+      const twentyFourHours = 24 * 60 * 60 * 1000;
+      return (Date.now() - enabledTime) < twentyFourHours;
+    }
+    
+    return false;
+  } catch (error) {
+    console.warn('Error checking flight mode status:', error);
+    return false;
+  }
+};
+
+// Synchronous version for backward compatibility
+export const isFlightModeEnabledSync = () => {
   const flightMode = localStorage.getItem('sudoku-flight-mode');
   const timestamp = localStorage.getItem('sudoku-flight-mode-timestamp');
   
-  // Check if flight mode was enabled within last 24 hours (cache validity)
   if (flightMode === 'enabled' && timestamp) {
     const enabledTime = parseInt(timestamp);
     const twentyFourHours = 24 * 60 * 60 * 1000;
@@ -171,11 +225,55 @@ export const isFlightModeEnabled = () => {
   return false;
 };
 
-// Disable flight mode
-export const disableFlightMode = () => {
-  localStorage.removeItem('sudoku-flight-mode');
-  localStorage.removeItem('sudoku-flight-mode-timestamp');
-  console.log('🛬 Flight mode disabled');
+// Disable flight mode and clear persistent cache
+export const disableFlightMode = async () => {
+  try {
+    await persistentCache.disableFlightMode();
+    console.log('🛬 Flight mode disabled and persistent cache cleared');
+  } catch (error) {
+    console.error('Error disabling flight mode:', error);
+    // Fallback to localStorage cleanup
+    localStorage.removeItem('sudoku-flight-mode');
+    localStorage.removeItem('sudoku-flight-mode-timestamp');
+    console.log('🛬 Flight mode disabled (localStorage only)');
+  }
+};
+
+// Auto-refresh flight mode cache if online and cache is stale
+export const refreshFlightModeCacheIfNeeded = async (onProgress = null) => {
+  try {
+    // Check if we need to refresh
+    const needsRefresh = await persistentCache.refreshCacheIfNeeded();
+    if (!needsRefresh) {
+      console.log('✅ Flight mode cache is fresh - no refresh needed');
+      return false;
+    }
+
+    console.log('🔄 Refreshing flight mode cache...');
+    const allDifficulties = ['easy', 'children', 'medium', 'hard', 'expert'];
+    
+    // Re-enable flight mode (this will update timestamp)
+    await persistentCache.enableFlightMode();
+    
+    // Preload all databases with fresh data
+    await preloadPuzzleDatabases(allDifficulties, onProgress);
+    
+    console.log('✅ Flight mode cache refreshed successfully');
+    return true;
+  } catch (error) {
+    console.error('❌ Failed to refresh flight mode cache:', error);
+    return false;
+  }
+};
+
+// Get flight mode cache statistics
+export const getFlightModeCacheStats = async () => {
+  try {
+    return await persistentCache.getCacheStats();
+  } catch (error) {
+    console.error('Error getting cache stats:', error);
+    return null;
+  }
 };
 
 // Get random puzzle grids for animation using the unified cache system
@@ -375,8 +473,14 @@ export const generatePuzzle = async (difficulty = 'medium') => {
     const [puzzleString, solutionString, rating] = puzzleEntry;
     
     // Convert the puzzle and solution strings to 9x9 grids
-    const puzzle = stringToGrid(puzzleString);
+    let puzzle = stringToGrid(puzzleString);
     const solution = stringToGrid(solutionString);
+    
+    // For children mode, fill 3 random 3x3 boxes completely
+    if (difficulty === 'children') {
+      puzzle = fillRandomBoxes(puzzle, solution, 3);
+      console.log('🎮 Children mode: filled 3 random 3x3 boxes to make it easier');
+    }
     
     return {
       puzzle,
@@ -505,6 +609,85 @@ export const isBoxComplete = (grid, boxIndex) => {
 // Get the box index for a given row and column
 export const getBoxIndex = (row, col) => {
   return Math.floor(row / 3) * 3 + Math.floor(col / 3);
+};
+
+// Fill random 3x3 boxes completely with solution values
+export const fillRandomBoxes = (puzzle, solution, numBoxes = 1) => {
+  // Create a copy of the puzzle to modify
+  const modifiedPuzzle = puzzle.map(row => [...row]);
+  
+  // Get all possible box indices (0-8)
+  const allBoxes = [0, 1, 2, 3, 4, 5, 6, 7, 8];
+  
+  // Shuffle the array and take the first numBoxes
+  for (let i = allBoxes.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [allBoxes[i], allBoxes[j]] = [allBoxes[j], allBoxes[i]];
+  }
+  
+  const selectedBoxes = allBoxes.slice(0, numBoxes);
+  
+  console.log(`🎮 Filling ${numBoxes} random boxes: ${selectedBoxes.join(', ')} for children mode`);
+  
+  // Fill each selected box
+  selectedBoxes.forEach(boxIndex => {
+    const boxRow = Math.floor(boxIndex / 3) * 3;
+    const boxCol = (boxIndex % 3) * 3;
+    
+    console.log(`📦 Filling box ${boxIndex} (rows ${boxRow}-${boxRow+2}, cols ${boxCol}-${boxCol+2})`);
+    
+    // Fill the entire 3x3 box with solution values
+    for (let row = boxRow; row < boxRow + 3; row++) {
+      for (let col = boxCol; col < boxCol + 3; col++) {
+        modifiedPuzzle[row][col] = solution[row][col];
+      }
+    }
+  });
+  
+  return modifiedPuzzle;
+};
+
+// Backward compatibility: Fill a single random 3x3 box
+export const fillRandomBox = (puzzle, solution) => {
+  return fillRandomBoxes(puzzle, solution, 1);
+};
+
+// IDCLIP cheat code: Fill a random 3x3 box (like no-clipping through walls in DOOM)
+export const idclipCheat = (currentGrid, solution) => {
+  if (!currentGrid || !solution) {
+    console.log('❌ IDCLIP: No grid or solution available');
+    return currentGrid;
+  }
+  
+  // Find boxes that aren't completely filled yet
+  const incompleteBoxes = [];
+  for (let boxIndex = 0; boxIndex < 9; boxIndex++) {
+    if (!isBoxComplete(currentGrid, boxIndex)) {
+      incompleteBoxes.push(boxIndex);
+    }
+  }
+  
+  if (incompleteBoxes.length === 0) {
+    console.log('🎮 IDCLIP: All boxes are already complete!');
+    return currentGrid;
+  }
+  
+  // Choose a random incomplete box
+  const randomBoxIndex = incompleteBoxes[Math.floor(Math.random() * incompleteBoxes.length)];
+  const boxRow = Math.floor(randomBoxIndex / 3) * 3;
+  const boxCol = (randomBoxIndex % 3) * 3;
+  
+  console.log(`🎮 IDCLIP activated! No-clipping through box ${randomBoxIndex} (rows ${boxRow}-${boxRow+2}, cols ${boxCol}-${boxCol+2})`);
+  
+  // Create a copy and fill the box
+  const modifiedGrid = currentGrid.map(row => [...row]);
+  for (let row = boxRow; row < boxRow + 3; row++) {
+    for (let col = boxCol; col < boxCol + 3; col++) {
+      modifiedGrid[row][col] = solution[row][col];
+    }
+  }
+  
+  return modifiedGrid;
 };
 
 // Check what sections (rows, columns, boxes) were completed by a move
@@ -636,6 +819,7 @@ export const getRecords = () => {
     const records = localStorage.getItem(RECORDS_STORAGE_KEY);
     return records ? JSON.parse(records) : {
       easy: { bestTime: null, totalGames: 0, totalTime: 0, averageTime: null },
+      children: { bestTime: null, totalGames: 0, totalTime: 0, averageTime: null },
       medium: { bestTime: null, totalGames: 0, totalTime: 0, averageTime: null },
       hard: { bestTime: null, totalGames: 0, totalTime: 0, averageTime: null },
       expert: { bestTime: null, totalGames: 0, totalTime: 0, averageTime: null }
@@ -644,6 +828,7 @@ export const getRecords = () => {
     console.error('Failed to load records:', error);
     return {
       easy: { bestTime: null, totalGames: 0, totalTime: 0, averageTime: null },
+      children: { bestTime: null, totalGames: 0, totalTime: 0, averageTime: null },
       medium: { bestTime: null, totalGames: 0, totalTime: 0, averageTime: null },
       hard: { bestTime: null, totalGames: 0, totalTime: 0, averageTime: null },
       expert: { bestTime: null, totalGames: 0, totalTime: 0, averageTime: null }
@@ -697,13 +882,16 @@ export const getDifficultyRecord = (difficulty) => {
 
 // Find all empty cells that have only one valid possibility
 export const findCellsWithOnePossibility = (grid) => {
+  console.log('🔍 findCellsWithOnePossibility called with grid:', grid ? 'Grid available' : 'No grid');
   const cellsWithOnePossibility = [];
+  let emptyCellsCount = 0;
   
   for (let row = 0; row < 9; row++) {
     for (let col = 0; col < 9; col++) {
       // Skip cells that are already filled
       if (grid[row][col] !== 0) continue;
       
+      emptyCellsCount++;
       const possibilities = [];
       
       // Check each number 1-9 to see if it's valid in this position
@@ -713,6 +901,8 @@ export const findCellsWithOnePossibility = (grid) => {
         }
       }
       
+      console.log(`🔍 Cell (${row}, ${col}) has ${possibilities.length} possibilities:`, possibilities);
+      
       // If there's exactly one possibility, add this cell to our list
       if (possibilities.length === 1) {
         cellsWithOnePossibility.push({
@@ -720,10 +910,12 @@ export const findCellsWithOnePossibility = (grid) => {
           col,
           number: possibilities[0]
         });
+        console.log(`✅ Cell (${row}, ${col}) added with single possibility: ${possibilities[0]}`);
       }
     }
   }
   
+  console.log(`🔍 Analyzed ${emptyCellsCount} empty cells, found ${cellsWithOnePossibility.length} with single possibility`);
   return cellsWithOnePossibility;
 };
 

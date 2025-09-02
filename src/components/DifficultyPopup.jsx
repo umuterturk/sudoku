@@ -3,6 +3,7 @@ const DifficultyPopup = ({ isOpen, onClose, onSelectDifficulty, currentDifficult
   if (!isOpen) return null;
 
   const difficulties = [
+    { value: 'children', label: 'Children', description: 'Easy + 3 complete boxes' },
     { value: 'easy', label: 'Easy', description: '36-46 clues' },
     { value: 'medium', label: 'Medium', description: '27-35 clues' },
     { value: 'hard', label: 'Hard', description: '17-26 clues' },

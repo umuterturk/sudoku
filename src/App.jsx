@@ -9,7 +9,7 @@ const DifficultyPopup = React.lazy(() => import('./components/DifficultyPopup'))
 const ResetConfirmationPopup = React.lazy(() => import('./components/ResetConfirmationPopup'));
 const ContinueGamePopup = React.lazy(() => import('./components/ContinueGamePopup'));
 const CompletionPopup = React.lazy(() => import('./components/CompletionPopup'));
-import { generatePuzzle, isGridComplete, isGridValid, isValidMove, loadPuzzleDatabase, enableFlightMode, isFlightModeEnabled, disableFlightMode, getRandomAnimationPuzzles, stringToGrid, parseGameFromUrl, generateShareableUrl, addGameRecord, getDifficultyRecord, getCompletedSections, findCellsWithOnePossibility } from './utils/sudokuUtils';
+import { generatePuzzle, isGridComplete, isGridValid, isValidMove, loadPuzzleDatabase, enableFlightMode, isFlightModeEnabled, isFlightModeEnabledSync, disableFlightMode, refreshFlightModeCacheIfNeeded, getFlightModeCacheStats, getRandomAnimationPuzzles, stringToGrid, parseGameFromUrl, generateShareableUrl, addGameRecord, getDifficultyRecord, getCompletedSections, findCellsWithOnePossibility, idclipCheat } from './utils/sudokuUtils';
 import { playCompletionSound, playMultipleCompletionSound } from './utils/audioUtils';
 import { Undo, Add, Refresh, Lightbulb, LightbulbOutlined, Circle, FiberManualRecord, Pause, PlayArrow, Share, Menu, VolumeUp, VolumeOff, Edit, EditOutlined, FlightTakeoff, FlightLand } from '@mui/icons-material';
 import { Drawer, List, ListItem, ListItemButton, ListItemIcon, ListItemText, IconButton, Divider, Box, Typography } from '@mui/material';
@@ -25,7 +25,7 @@ function App() {
 
   // Safe setDifficulty wrapper to ensure it's always a valid string
   const safSetDifficulty = (newDifficulty) => {
-    if (typeof newDifficulty === 'string' && ['easy', 'medium', 'hard', 'expert'].includes(newDifficulty)) {
+    if (typeof newDifficulty === 'string' && ['easy', 'children', 'medium', 'hard', 'expert'].includes(newDifficulty)) {
       setDifficulty(newDifficulty);
     } else {
       console.warn('Invalid difficulty value:', newDifficulty, 'defaulting to medium');
@@ -59,6 +59,26 @@ function App() {
   const [notes, setNotes] = useState(Array(9).fill().map(() => Array(9).fill().map(() => [])));
   const [highlightedCells, setHighlightedCells] = useState([]);
   const [longPressTimer, setLongPressTimer] = useState(null);
+  const [isLongPressTriggered, setIsLongPressTriggered] = useState(false);
+
+  // Debug effect to log when highlightedCells changes
+  useEffect(() => {
+    console.log('🔍 highlightedCells state changed:', highlightedCells);
+  }, [highlightedCells]);
+
+  // Debug function for testing hint long press from console
+  const testHintLongPress = () => {
+    console.log('🧪 Testing hint long press manually...');
+    handleHintLongPress();
+  };
+
+  // Make test function available globally for debugging
+  useEffect(() => {
+    window.testHintLongPress = testHintLongPress;
+    return () => {
+      delete window.testHintLongPress;
+    };
+  }, [grid]);
   
   // Loading and flight mode states
   const [isLoading, setIsLoading] = useState(false);
@@ -103,6 +123,64 @@ function App() {
     }
   };
 
+  // IDCLIP cheat code - DOOM reference for no-clipping through walls
+  const idclip = () => {
+    if (!grid || !solution) {
+      console.log('❌ IDCLIP: No active game to cheat in');
+      return;
+    }
+    
+    console.log('🎮 IDCLIP activated! No-clipping through a random 3x3 box...');
+    const newGrid = idclipCheat(grid, solution);
+    
+    // Check if the grid actually changed by comparing content
+    const gridChanged = JSON.stringify(newGrid) !== JSON.stringify(grid);
+    
+    if (gridChanged) {
+      // Add to move history for undo functionality
+      setMoveHistory(prev => [...prev, { 
+        type: 'cheat', 
+        description: 'IDCLIP cheat activated',
+        previousGrid: grid.map(row => [...row]),
+        newGrid: newGrid.map(row => [...row])
+      }]);
+      
+      setGrid(newGrid);
+      console.log('✅ IDCLIP: Successfully filled a random 3x3 box!');
+      
+      // Check if game is now complete
+      if (isGridComplete(newGrid)) {
+        if (isGridValid(newGrid)) {
+          setGameStatus('completed');
+          setIsTimerRunning(false);
+          
+          // Record the completion and show popup
+          const recordData = addGameRecord(difficulty, timer);
+          
+          setCompletionData({
+            difficulty,
+            timer,
+            lives,
+            isNewRecord: recordData.isNewRecord,
+            bestTime: recordData.bestTime,
+            totalGamesPlayed: recordData.totalGames,
+            averageTime: recordData.averageTime
+          });
+          
+          // Clear saved game since it's completed
+          localStorage.removeItem('sudoku-game-state');
+          
+          // Show completion popup after a brief delay
+          setTimeout(() => {
+            setShowCompletionPopup(true);
+          }, 500);
+        }
+      }
+    } else {
+      console.log('🎮 IDCLIP: No changes made (all boxes might be complete or no incomplete boxes found)');
+    }
+  };
+
   // Save game state to localStorage
   const saveGameState = (gameState) => {
     try {
@@ -130,12 +208,22 @@ function App() {
     window.iddqd = iddqd;
     window.idspispopd = idspispopd;
     
+    // Make idclip work without parentheses using a getter
+    Object.defineProperty(window, 'idclip', {
+      get: function() {
+        idclip();
+        return 'IDCLIP activated!';
+      },
+      configurable: true
+    });
+    
     // Add a help function to list available cheats
     window.cheats = () => {
       console.log('🎮 Available cheat codes:');
       console.log('• idkfa() - Restore lives to 3 (DOOM: all weapons & ammo)');
       console.log('• iddqd() - God mode: 999 lives (DOOM: invincibility)');
       console.log('• idspispopd() - Reveal solution (DOOM: no-clipping)');
+      console.log('• idclip - Fill a random 3x3 box (DOOM: no-clipping through walls)');
       console.log('• cheats() - Show this help');
     };
     
@@ -144,9 +232,10 @@ function App() {
       delete window.idkfa;
       delete window.iddqd;
       delete window.idspispopd;
+      delete window.idclip;
       delete window.cheats;
     };
-  }, [idkfa, iddqd, idspispopd]);
+  }, [idkfa, iddqd, idspispopd, idclip]);
 
   // Initialize game
   useEffect(() => {
@@ -215,10 +304,34 @@ function App() {
     console.log('🚀 Sudoku app initializing...');
     initializeGame();
 
-    // Check if flight mode is enabled
-    const flightMode = isFlightModeEnabled();
-    setFlightModeEnabled(flightMode);
-    console.log(`✈️ Flight mode status: ${flightMode ? 'ENABLED' : 'DISABLED'}`);
+    // Check if flight mode is enabled and handle daily refresh
+    const initializeFlightMode = async () => {
+      try {
+        // Check flight mode status
+        const flightMode = await isFlightModeEnabled();
+        setFlightModeEnabled(flightMode);
+        console.log(`✈️ Flight mode status: ${flightMode ? 'ENABLED' : 'DISABLED'}`);
+        
+        // If flight mode is enabled and we're online, check for daily refresh
+        if (flightMode && navigator.onLine) {
+          console.log('🔄 Checking if flight mode cache needs refresh...');
+          const refreshed = await refreshFlightModeCacheIfNeeded((progress) => {
+            console.log(`📦 Refreshing cache: ${progress.difficulty} (${progress.completed}/${progress.total})`);
+          });
+          
+          if (refreshed) {
+            console.log('✅ Flight mode cache refreshed with latest puzzles');
+          }
+        }
+      } catch (error) {
+        console.error('Error initializing flight mode:', error);
+        // Fallback to sync check
+        const flightMode = isFlightModeEnabledSync();
+        setFlightModeEnabled(flightMode);
+      }
+    };
+    
+    initializeFlightMode();
     console.log('📱 App ready - databases will load on demand');
   }, []);
 
@@ -561,57 +674,121 @@ function App() {
   };
 
   const handleHintClick = (event) => {
+    console.log('🔄 Hint click event triggered, isLongPressTriggered:', isLongPressTriggered);
+    
+    // Don't change hint level if this was a long press
+    if (isLongPressTriggered) {
+      console.log('🚫 Preventing hint level change due to long press');
+      setIsLongPressTriggered(false); // Reset the flag
+      event.target.blur();
+      return;
+    }
+    
     // Cycle through hint levels in round-robin style starting with medium
     const hintLevels = ['medium', 'novice', 'arcade', 'hard'];
     const currentIndex = hintLevels.indexOf(hintLevel);
     const nextIndex = (currentIndex + 1) % hintLevels.length;
     setHintLevel(hintLevels[nextIndex]);
     
+    console.log('🔄 Hint level changed to:', hintLevels[nextIndex]);
+    
     // Remove focus from the button
     event.target.blur();
   };
 
   const handleHintLongPress = () => {
-    if (!grid) return;
+    console.log('🔍 Hint long press triggered!');
+    
+    // Set flag to prevent click event from changing hint level
+    setIsLongPressTriggered(true);
+    
+    if (!grid) {
+      console.log('❌ No grid available for hint long press');
+      return;
+    }
+    
+    console.log('🔍 Finding cells with only one possibility...');
     
     // Find cells with only one possibility
     const cellsWithOnePossibility = findCellsWithOnePossibility(grid);
     
+    console.log(`🔍 Found ${cellsWithOnePossibility.length} cells with one possibility:`, cellsWithOnePossibility);
+    
     if (cellsWithOnePossibility.length === 0) {
+      console.log('❌ No cells with single possibility found');
       return;
     }
     
     // Highlight these cells in green
-    setHighlightedCells(cellsWithOnePossibility.map(cell => ({
+    const highlightCells = cellsWithOnePossibility.map(cell => ({
       row: cell.row,
       col: cell.col
-    })));
+    }));
+    
+    console.log('✅ Setting highlighted cells:', highlightCells);
+    setHighlightedCells(highlightCells);
     
     // Remove the highlight after 2 seconds
     setTimeout(() => {
+      console.log('🔍 Removing highlighted cells after 2 seconds');
       setHighlightedCells([]);
     }, 2000);
   };
 
   const handleHintMouseDown = (event) => {
+    console.log('👇 Hint button mouse/touch down event triggered, event type:', event.type);
     event.preventDefault();
+    
+    // Clear any existing timer first
+    if (longPressTimer) {
+      console.log('⏰ Clearing existing timer before setting new one');
+      clearTimeout(longPressTimer);
+    }
+    
     const timer = setTimeout(() => {
+      console.log('⏰ Long press timer triggered after 800ms');
       handleHintLongPress();
     }, 800); // 800ms for long press
     setLongPressTimer(timer);
+    console.log('⏰ Long press timer set:', timer);
   };
 
   const handleHintMouseUp = (event) => {
+    console.log('👆 Hint button mouse/touch up event triggered, event type:', event.type);
     if (longPressTimer) {
+      console.log('⏰ Clearing long press timer (regular release):', longPressTimer);
       clearTimeout(longPressTimer);
       setLongPressTimer(null);
+      
+      // Reset the long press flag if timer was cleared before triggering
+      // Use a small timeout to ensure this happens after any potential click event
+      setTimeout(() => {
+        if (isLongPressTriggered) {
+          console.log('🔄 Resetting long press flag after regular release');
+          setIsLongPressTriggered(false);
+        }
+      }, 10);
+    } else {
+      console.log('⏰ No long press timer to clear');
     }
   };
 
   const handleHintMouseLeave = (event) => {
+    console.log('🚪 Hint button mouse leave event triggered');
     if (longPressTimer) {
+      console.log('⏰ Clearing long press timer on mouse leave:', longPressTimer);
       clearTimeout(longPressTimer);
       setLongPressTimer(null);
+      
+      // Reset the long press flag when mouse leaves
+      setTimeout(() => {
+        if (isLongPressTriggered) {
+          console.log('🔄 Resetting long press flag after mouse leave');
+          setIsLongPressTriggered(false);
+        }
+      }, 10);
+    } else {
+      console.log('⏰ No long press timer to clear on mouse leave');
     }
   };
 
@@ -720,11 +897,20 @@ function App() {
     if (flightModeEnabled) {
       // Disable flight mode
       console.log('🛬 Disabling flight mode...');
-      disableFlightMode();
-      setFlightModeEnabled(false);
-      console.log('✅ Flight mode disabled - puzzles will load on demand');
+      setFlightModeLoading(true);
+      
+      try {
+        await disableFlightMode();
+        setFlightModeEnabled(false);
+        console.log('✅ Flight mode disabled - persistent cache cleared');
+      } catch (error) {
+        console.error('Error disabling flight mode:', error);
+        setFlightModeEnabled(false); // Still update UI
+      }
+      
+      setFlightModeLoading(false);
     } else {
-      // Enable flight mode with progress tracking
+      // Enable flight mode with progress tracking and persistent storage
       console.log('🛩️ Enabling flight mode - downloading all puzzles...');
       setFlightModeLoading(true);
       setIsLoading(true);
@@ -743,7 +929,7 @@ function App() {
       if (success) {
         setFlightModeEnabled(true);
         setIsDrawerOpen(false); // Close drawer after successful activation
-        console.log('✈️ Flight mode enabled! All puzzles cached for offline play.');
+        console.log('✈️ Flight mode enabled! All puzzles cached persistently for offline play.');
       } else {
         console.error('❌ Failed to enable flight mode');
       }
@@ -870,6 +1056,7 @@ function App() {
                   onMouseLeave={handleHintMouseLeave}
                   onTouchStart={handleHintMouseDown}
                   onTouchEnd={handleHintMouseUp}
+                  onTouchCancel={handleHintMouseUp}
                   disabled={isAnimating}
                   title={`Hint Level: ${hintLevel.charAt(0).toUpperCase() + hintLevel.slice(1)} (Long press to show cells with one possibility)`}
                 >
