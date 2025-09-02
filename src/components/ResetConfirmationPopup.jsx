@@ -1,4 +1,3 @@
-import React from 'react';
 
 const ResetConfirmationPopup = ({ isOpen, onClose, onConfirm }) => {
   if (!isOpen) return null;

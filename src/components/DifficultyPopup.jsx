@@ -1,4 +1,3 @@
-import React from 'react';
 
 const DifficultyPopup = ({ isOpen, onClose, onSelectDifficulty, currentDifficulty, canClose = true }) => {
   if (!isOpen) return null;

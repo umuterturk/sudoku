@@ -3,59 +3,224 @@
 // Cache for loaded puzzle databases to avoid re-importing
 const puzzleCache = new Map();
 
-// Dynamically load puzzle database for a specific difficulty
-const loadPuzzleDatabase = async (difficulty) => {
+// Track loading states to prevent race conditions
+const loadingPromises = new Map();
+
+// Cache management constants
+const MAX_CACHE_SIZE = 6; // Maximum number of difficulty levels to cache
+const CACHE_CLEANUP_THRESHOLD = 5; // Start cleanup when cache reaches this size
+
+// Enhanced puzzle database loader with race condition protection
+export const loadPuzzleDatabase = async (difficulty) => {
   // Check if already cached
   if (puzzleCache.has(difficulty)) {
+    console.log(`✅ ${difficulty} puzzle database loaded from cache`);
     return puzzleCache.get(difficulty);
   }
 
-  try {
-    let module;
-    switch (difficulty) {
-      case 'easy':
-        module = await import('../game_database/easy.js');
-        break;
-      case 'medium':
-        module = await import('../game_database/medium.js');
-        break;
-      case 'hard':
-        module = await import('../game_database/hard.js');
-        break;
-      case 'expert':
-        module = await import('../game_database/expert.js');
-        break;
-      default:
-        module = await import('../game_database/medium.js');
-    }
-
-    const puzzles = module.puzzles;
-    puzzleCache.set(difficulty, puzzles);
-    return puzzles;
-  } catch (error) {
-    console.error(`Failed to load ${difficulty} puzzles:`, error);
-    // Fallback to medium if available, otherwise return empty array
-    if (difficulty !== 'medium' && puzzleCache.has('medium')) {
-      return puzzleCache.get('medium');
-    }
-    return [];
+  // Check if currently loading (prevent race conditions)
+  if (loadingPromises.has(difficulty)) {
+    console.log(`⏳ ${difficulty} puzzle database already loading, waiting...`);
+    return await loadingPromises.get(difficulty);
   }
+
+  console.log(`🔄 Loading ${difficulty} puzzle database...`);
+
+  // Create loading promise
+  const loadingPromise = (async () => {
+    try {
+      let module;
+      switch (difficulty) {
+        case 'easy':
+          module = await import('../game_database/easy.js');
+          break;
+        case 'medium':
+          module = await import('../game_database/medium.js');
+          break;
+        case 'hard':
+          module = await import('../game_database/hard.js');
+          break;
+        case 'expert':
+          module = await import('../game_database/expert.js');
+          break;
+        default:
+          module = await import('../game_database/medium.js');
+      }
+
+      const puzzles = module.puzzles;
+      
+      // Manage cache size to prevent unbounded growth
+      if (puzzleCache.size >= CACHE_CLEANUP_THRESHOLD) {
+        // Remove least recently used items (simple FIFO for now)
+        const keysToDelete = Array.from(puzzleCache.keys()).slice(0, puzzleCache.size - MAX_CACHE_SIZE + 1);
+        keysToDelete.forEach(key => puzzleCache.delete(key));
+        console.log(`🧹 Cache cleanup: removed ${keysToDelete.length} entries`);
+      }
+      
+      puzzleCache.set(difficulty, puzzles);
+      console.log(`✅ ${difficulty} puzzle database loaded successfully (${puzzles.length} puzzles)`);
+      return puzzles;
+    } catch (error) {
+      console.error(`Failed to load ${difficulty} puzzles:`, error);
+      // Standardized fallback: try medium, then empty array
+      if (difficulty !== 'medium' && puzzleCache.has('medium')) {
+        return puzzleCache.get('medium');
+      } else if (difficulty !== 'medium') {
+        // Try to load medium as fallback
+        try {
+          return await loadPuzzleDatabase('medium');
+        } catch (fallbackError) {
+          console.error('Fallback to medium also failed:', fallbackError);
+        }
+      }
+      return [];
+    } finally {
+      // Clean up loading promise
+      loadingPromises.delete(difficulty);
+    }
+  })();
+
+  // Store the loading promise
+  loadingPromises.set(difficulty, loadingPromise);
+  
+  return await loadingPromise;
 };
 
 // Preload puzzle databases for better performance (optional)
-export const preloadPuzzleDatabase = async (difficulty) => {
+export const preloadPuzzleDatabase = async (difficulty, onProgress = null) => {
   try {
     await loadPuzzleDatabase(difficulty);
     console.log(`Preloaded ${difficulty} puzzle database`);
+    if (onProgress) onProgress(difficulty, true);
   } catch (error) {
     console.warn(`Failed to preload ${difficulty} puzzles:`, error);
+    if (onProgress) onProgress(difficulty, false, error);
   }
 };
 
-// Preload multiple difficulties
-export const preloadPuzzleDatabases = async (difficulties = ['medium']) => {
-  const promises = difficulties.map(diff => preloadPuzzleDatabase(diff));
+// Preload multiple difficulties with progress tracking
+export const preloadPuzzleDatabases = async (difficulties = ['medium'], onProgress = null) => {
+  let completed = 0;
+  const total = difficulties.length;
+  
+  const promises = difficulties.map(async (diff) => {
+    try {
+      await loadPuzzleDatabase(diff);
+      completed++;
+      if (onProgress) {
+        onProgress({
+          difficulty: diff,
+          completed,
+          total,
+          progress: (completed / total) * 100,
+          success: true
+        });
+      }
+      console.log(`Preloaded ${diff} puzzle database (${completed}/${total})`);
+    } catch (error) {
+      completed++;
+      if (onProgress) {
+        onProgress({
+          difficulty: diff,
+          completed,
+          total,
+          progress: (completed / total) * 100,
+          success: false,
+          error
+        });
+      }
+      console.warn(`Failed to preload ${diff} puzzles:`, error);
+    }
+  });
+  
   await Promise.all(promises);
+};
+
+// Flight mode: preload all difficulties for offline play
+export const enableFlightMode = async (onProgress = null) => {
+  const allDifficulties = ['easy', 'medium', 'hard', 'expert'];
+  console.log('🛩️ Enabling flight mode - preloading all puzzle databases...');
+  
+  try {
+    await preloadPuzzleDatabases(allDifficulties, onProgress);
+    console.log('✈️ Flight mode enabled! All puzzles cached for offline play.');
+    
+    // Store flight mode status
+    localStorage.setItem('sudoku-flight-mode', 'enabled');
+    localStorage.setItem('sudoku-flight-mode-timestamp', Date.now().toString());
+    
+    return true;
+  } catch (error) {
+    console.error('❌ Failed to enable flight mode:', error);
+    return false;
+  }
+};
+
+// Check if flight mode is enabled
+export const isFlightModeEnabled = () => {
+  const flightMode = localStorage.getItem('sudoku-flight-mode');
+  const timestamp = localStorage.getItem('sudoku-flight-mode-timestamp');
+  
+  // Check if flight mode was enabled within last 24 hours (cache validity)
+  if (flightMode === 'enabled' && timestamp) {
+    const enabledTime = parseInt(timestamp);
+    const twentyFourHours = 24 * 60 * 60 * 1000;
+    return (Date.now() - enabledTime) < twentyFourHours;
+  }
+  
+  return false;
+};
+
+// Disable flight mode
+export const disableFlightMode = () => {
+  localStorage.removeItem('sudoku-flight-mode');
+  localStorage.removeItem('sudoku-flight-mode-timestamp');
+  console.log('🛬 Flight mode disabled');
+};
+
+// Get random puzzle grids for animation using the unified cache system
+export const getRandomAnimationPuzzles = async (difficulty, count = 20) => {
+  try {
+    // Use the main cache system instead of direct imports
+    const puzzles = await loadPuzzleDatabase(difficulty);
+    
+    if (!puzzles || puzzles.length === 0) {
+      throw new Error(`No puzzles available for difficulty: ${difficulty}`);
+    }
+    
+    const animationPuzzles = [];
+    
+    // Get random puzzles for animation
+    for (let i = 0; i < count; i++) {
+      const randomIndex = Math.floor(Math.random() * puzzles.length);
+      const puzzleEntry = puzzles[randomIndex];
+      // Extract just the puzzle string from the format [puzzleString, solutionString, rating]
+      const puzzleString = puzzleEntry[0];
+      const puzzleGrid = stringToGrid(puzzleString);
+      animationPuzzles.push(puzzleGrid);
+    }
+    
+    return animationPuzzles;
+  } catch (error) {
+    console.error('Failed to load animation puzzles:', error);
+    // Standardized fallback: try medium difficulty first
+    if (difficulty !== 'medium') {
+      try {
+        return await getRandomAnimationPuzzles('medium', count);
+      } catch (fallbackError) {
+        console.error('Animation fallback to medium failed:', fallbackError);
+      }
+    }
+    
+    // Final fallback to random grids
+    return Array(count).fill().map(() => 
+      Array(9).fill().map(() => 
+        Array(9).fill().map(() => {
+          return Math.random() < 0.3 ? 0 : Math.floor(Math.random() * 9) + 1;
+        })
+      )
+    );
+  }
 };
 
 // Get difficulty rating based on clue count
@@ -560,4 +725,26 @@ export const findCellsWithOnePossibility = (grid) => {
   }
   
   return cellsWithOnePossibility;
+};
+
+// Cache management functions
+export const getCacheStatus = () => {
+  return {
+    size: puzzleCache.size,
+    keys: Array.from(puzzleCache.keys()),
+    loadingCount: loadingPromises.size,
+    maxSize: MAX_CACHE_SIZE
+  };
+};
+
+export const clearCache = () => {
+  puzzleCache.clear();
+  loadingPromises.clear();
+  console.log('Puzzle cache cleared');
+};
+
+export const clearCacheForDifficulty = (difficulty) => {
+  puzzleCache.delete(difficulty);
+  loadingPromises.delete(difficulty);
+  console.log(`Cache cleared for ${difficulty}`);
 };

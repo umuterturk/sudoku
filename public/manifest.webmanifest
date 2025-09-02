@@ -1,0 +1,20 @@
+{
+  "name": "Sudoku by Umut",
+  "short_name": "Sudoku",
+  "start_url": "/sudoku/",
+  "scope": "/sudoku/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#667eea",
+  "description": "Play a fast, beautiful Sudoku game with Easy to Expert difficulties, notes, hints, undo, shareable games, and offline flight mode.",
+  "icons": [
+    {
+      "src": "/sudoku/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
+
+

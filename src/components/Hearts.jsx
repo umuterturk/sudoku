@@ -1,4 +1,4 @@
-import React from 'react';
+
 import { Favorite, FavoriteBorder } from '@mui/icons-material';
 
 const Hearts = ({ lives, maxLives = 3, isShaking = false }) => {

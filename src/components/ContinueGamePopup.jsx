@@ -1,5 +1,5 @@
-import React from 'react';
-import { PlayArrow, Add } from '@mui/icons-material';
+
+import { Add, PlayArrow } from '@mui/icons-material';
 
 const ContinueGamePopup = ({ isOpen, onContinue, onNewGame, onClose, difficulty, timer }) => {
   if (!isOpen) return null;

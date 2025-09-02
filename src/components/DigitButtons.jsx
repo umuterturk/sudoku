@@ -1,4 +1,3 @@
-import React from 'react';
 import { isValidMove } from '../utils/sudokuUtils';
 
 const DigitButtons = ({ onDigitSelect, selectedCell, grid, originalGrid, hintLevel, disabled = false, isNotesMode, notes }) => {

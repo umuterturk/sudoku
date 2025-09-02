@@ -1,6 +1,5 @@
-import React from 'react';
-import SudokuCell from './SudokuCell';
 import { isValidMove, getBoxIndex } from '../utils/sudokuUtils';
+import SudokuCell from './SudokuCell';
 
 const SudokuGrid = ({ 
   grid, 

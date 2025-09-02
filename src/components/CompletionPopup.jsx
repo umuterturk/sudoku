@@ -1,5 +1,3 @@
-import React from 'react';
-import { EmojiEvents, Share, Add, Refresh } from '@mui/icons-material';
 
 const CompletionPopup = ({ 
   isOpen, 

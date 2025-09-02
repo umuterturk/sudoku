@@ -1,14 +1,17 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense } from 'react';
 import SudokuGrid from './components/SudokuGrid';
 import DigitButtons from './components/DigitButtons';
-import DifficultyPopup from './components/DifficultyPopup';
-import ResetConfirmationPopup from './components/ResetConfirmationPopup';
-import ContinueGamePopup from './components/ContinueGamePopup';
-import CompletionPopup from './components/CompletionPopup';
 import Hearts from './components/Hearts';
-import { generatePuzzle, isGridComplete, isGridValid, isValidMove, preloadPuzzleDatabase, stringToGrid, parseGameFromUrl, generateShareableUrl, addGameRecord, getDifficultyRecord, getCompletedSections, findCellsWithOnePossibility } from './utils/sudokuUtils';
+import LoadingScreen from './components/LoadingScreen';
+
+// Lazy load popup components for better initial load performance
+const DifficultyPopup = React.lazy(() => import('./components/DifficultyPopup'));
+const ResetConfirmationPopup = React.lazy(() => import('./components/ResetConfirmationPopup'));
+const ContinueGamePopup = React.lazy(() => import('./components/ContinueGamePopup'));
+const CompletionPopup = React.lazy(() => import('./components/CompletionPopup'));
+import { generatePuzzle, isGridComplete, isGridValid, isValidMove, loadPuzzleDatabase, enableFlightMode, isFlightModeEnabled, disableFlightMode, getRandomAnimationPuzzles, stringToGrid, parseGameFromUrl, generateShareableUrl, addGameRecord, getDifficultyRecord, getCompletedSections, findCellsWithOnePossibility } from './utils/sudokuUtils';
 import { playCompletionSound, playMultipleCompletionSound } from './utils/audioUtils';
-import { Undo, Add, Refresh, Lightbulb, LightbulbOutlined, Circle, FiberManualRecord, Pause, PlayArrow, Share, Menu, VolumeUp, VolumeOff, Edit, EditOutlined } from '@mui/icons-material';
+import { Undo, Add, Refresh, Lightbulb, LightbulbOutlined, Circle, FiberManualRecord, Pause, PlayArrow, Share, Menu, VolumeUp, VolumeOff, Edit, EditOutlined, FlightTakeoff, FlightLand } from '@mui/icons-material';
 import { Drawer, List, ListItem, ListItemButton, ListItemIcon, ListItemText, IconButton, Divider, Box, Typography } from '@mui/material';
 import './App.css';
 
@@ -57,8 +60,12 @@ function App() {
   const [highlightedCells, setHighlightedCells] = useState([]);
   const [longPressTimer, setLongPressTimer] = useState(null);
   
-  // Cache for animation puzzles to avoid re-loading
-  const [animationPuzzleCache, setAnimationPuzzleCache] = useState(new Map());
+  // Loading and flight mode states
+  const [isLoading, setIsLoading] = useState(false);
+  const [loadingMessage, setLoadingMessage] = useState('');
+  const [loadingProgress, setLoadingProgress] = useState(null);
+  const [flightModeEnabled, setFlightModeEnabled] = useState(false);
+  const [flightModeLoading, setFlightModeLoading] = useState(false);
 
   // Helper function to safely format difficulty string
   const formatDifficulty = (diff) => {
@@ -205,13 +212,14 @@ function App() {
       }
     };
 
+    console.log('🚀 Sudoku app initializing...');
     initializeGame();
 
-    // Preload easy and hard difficulties in the background for better UX
-    setTimeout(() => {
-      preloadPuzzleDatabase('easy');
-      preloadPuzzleDatabase('hard');
-    }, 2000); // Wait 2 seconds after app load
+    // Check if flight mode is enabled
+    const flightMode = isFlightModeEnabled();
+    setFlightModeEnabled(flightMode);
+    console.log(`✈️ Flight mode status: ${flightMode ? 'ENABLED' : 'DISABLED'}`);
+    console.log('📱 App ready - databases will load on demand');
   }, []);
 
   // Auto-save game state
@@ -251,63 +259,7 @@ function App() {
     return () => clearInterval(interval);
   }, [isTimerRunning, isPaused, timer]);
 
-  // Get random puzzle grids for animation
-  const getRandomAnimationPuzzles = async (difficulty, count = 20) => {
-    try {
-      // Check cache first
-      const cacheKey = `${difficulty}_${count}`;
-      if (animationPuzzleCache.has(cacheKey)) {
-        return animationPuzzleCache.get(cacheKey);
-      }
-      
-      // Import the puzzle database for the selected difficulty
-      let puzzleModule;
-      switch (difficulty) {
-        case 'easy':
-          puzzleModule = await import('./game_database/easy.js');
-          break;
-        case 'medium':
-          puzzleModule = await import('./game_database/medium.js');
-          break;
-        case 'hard':
-          puzzleModule = await import('./game_database/hard.js');
-          break;
-        case 'expert':
-          puzzleModule = await import('./game_database/expert.js');
-          break;
-        default:
-          puzzleModule = await import('./game_database/medium.js');
-      }
-      
-      const puzzles = puzzleModule.puzzles;
-      const animationPuzzles = [];
-      
-      // Get random puzzles for animation
-      for (let i = 0; i < count; i++) {
-        const randomIndex = Math.floor(Math.random() * puzzles.length);
-        const puzzleEntry = puzzles[randomIndex];
-        // Extract just the puzzle string from the new format [puzzleString, solutionString, rating]
-        const puzzleString = puzzleEntry[0];
-        const puzzleGrid = stringToGrid(puzzleString);
-        animationPuzzles.push(puzzleGrid);
-      }
-      
-      // Cache the result
-      setAnimationPuzzleCache(prev => new Map(prev).set(cacheKey, animationPuzzles));
-      
-      return animationPuzzles;
-    } catch (error) {
-      console.error('Failed to load animation puzzles:', error);
-      // Fallback to random grids if loading fails
-      return Array(20).fill().map(() => 
-        Array(9).fill().map(() => 
-          Array(9).fill().map(() => {
-            return Math.random() < 0.3 ? 0 : Math.floor(Math.random() * 9) + 1;
-          })
-        )
-      );
-    }
-  };
+  // Animation puzzles now handled by unified cache system in sudokuUtils
 
   const animateGameStart = async (puzzle, puzzleSolution, selectedDifficulty) => {
     // Set the basic game state first so the grid renders
@@ -364,13 +316,35 @@ function App() {
 
   const startNewGame = async (selectedDifficulty = difficulty) => {
     try {
-      // Show loading state during puzzle generation
-      setIsAnimating(true);
+      console.log(`🎮 Starting new ${selectedDifficulty} game...`);
+      
+      // Show loading screen with database loading message
+      setIsLoading(true);
+      setLoadingMessage(`Loading ${formatDifficulty(selectedDifficulty)} puzzles...`);
+      setLoadingProgress(0);
+      
+      // Load the puzzle database for selected difficulty
+      console.log(`📦 Requesting ${selectedDifficulty} puzzle database...`);
+      await loadPuzzleDatabase(selectedDifficulty);
+      setLoadingProgress(50);
+      
+      // Generate puzzle from loaded database
+      setLoadingMessage('Generating puzzle...');
       const { puzzle, solution: puzzleSolution } = await generatePuzzle(selectedDifficulty);
-      // Don't set isAnimating to false here - let animateGameStart handle it
+      setLoadingProgress(75);
+      console.log(`🧩 Puzzle generated successfully for ${selectedDifficulty} difficulty`);
+      
+      // Hide loading screen and start animation
+      setIsLoading(false);
+      setIsAnimating(true);
+      console.log(`🎬 Starting game animation...`);
+      
+      // Start game animation
       await animateGameStart(puzzle, puzzleSolution, selectedDifficulty);
+      console.log(`✨ Game started successfully!`);
     } catch (error) {
       console.error('Failed to start new game:', error);
+      setIsLoading(false);
       setIsAnimating(false);
       // Could show an error message to user here
     }
@@ -741,17 +715,58 @@ function App() {
     handleShareGame();
   };
 
+  // Flight mode handlers
+  const handleFlightModeToggle = async () => {
+    if (flightModeEnabled) {
+      // Disable flight mode
+      console.log('🛬 Disabling flight mode...');
+      disableFlightMode();
+      setFlightModeEnabled(false);
+      console.log('✅ Flight mode disabled - puzzles will load on demand');
+    } else {
+      // Enable flight mode with progress tracking
+      console.log('🛩️ Enabling flight mode - downloading all puzzles...');
+      setFlightModeLoading(true);
+      setIsLoading(true);
+      setLoadingMessage('Preparing for flight mode...');
+      setLoadingProgress(0);
+      
+      const success = await enableFlightMode((progress) => {
+        console.log(`📥 Loading ${progress.difficulty}: ${progress.completed}/${progress.total} (${Math.round(progress.progress)}%)`);
+        setLoadingMessage(`Loading ${progress.difficulty} puzzles... (${progress.completed}/${progress.total})`);
+        setLoadingProgress(progress.progress);
+      });
+      
+      setFlightModeLoading(false);
+      setIsLoading(false);
+      
+      if (success) {
+        setFlightModeEnabled(true);
+        setIsDrawerOpen(false); // Close drawer after successful activation
+        console.log('✈️ Flight mode enabled! All puzzles cached for offline play.');
+      } else {
+        console.error('❌ Failed to enable flight mode');
+      }
+    }
+  };
+
   const formatTime = (seconds) => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
-  if (!grid && !isAnimating && !showDifficultyPopup && !showContinuePopup) {
-    return <div className="loading">Loading...</div>;
+  // Show loading screen when loading or when no grid exists and not showing popups
+  if (isLoading || (!grid && !isAnimating && !showDifficultyPopup && !showContinuePopup)) {
+    return (
+      <LoadingScreen 
+        message={loadingMessage || 'Loading Sudoku...'}
+        progress={loadingProgress}
+        showProgress={loadingProgress !== null}
+        subMessage={flightModeLoading ? 'Downloading puzzles for offline play' : null}
+      />
+    );
   }
-
-
 
   return (
     <>
@@ -907,11 +922,13 @@ function App() {
 
         </main>
 
-        <ResetConfirmationPopup
-          isOpen={showResetPopup}
-          onClose={() => setShowResetPopup(false)}
-          onConfirm={handleResetConfirm}
-        />
+        <Suspense fallback={null}>
+          <ResetConfirmationPopup
+            isOpen={showResetPopup}
+            onClose={() => setShowResetPopup(false)}
+            onConfirm={handleResetConfirm}
+          />
+        </Suspense>
       </div>
 
       {/* Left Drawer */}
@@ -1009,6 +1026,27 @@ function App() {
               />
             </ListItemButton>
           </ListItem>
+
+          <ListItem disablePadding>
+            <ListItemButton
+              onClick={handleFlightModeToggle}
+              disabled={flightModeLoading}
+            >
+              <ListItemIcon>
+                {flightModeEnabled ? (
+                  <FlightLand sx={{ color: '#48bb78' }} />
+                ) : (
+                  <FlightTakeoff sx={{ color: '#a0aec0' }} />
+                )}
+              </ListItemIcon>
+              <ListItemText 
+                primary={flightModeEnabled ? "Flight Mode: On" : "Flight Mode: Off"}
+                secondary={flightModeEnabled ? "All puzzles cached for offline play" : "Tap to download all puzzles"}
+                primaryTypographyProps={{ fontWeight: 500 }}
+                secondaryTypographyProps={{ fontSize: '0.75rem' }}
+              />
+            </ListItemButton>
+          </ListItem>
         </List>
 
         <Box sx={{ mt: 'auto', p: 2, borderTop: '1px solid #e2e8f0' }}>
@@ -1049,47 +1087,53 @@ function App() {
       )}
 
       {/* Continue Game Popup - Outside app container to avoid blur */}
-      <ContinueGamePopup
-        isOpen={showContinuePopup}
-        onContinue={handleContinueGame}
-        onNewGame={handleContinueNewGame}
-        onClose={() => setShowContinuePopup(false)}
-        difficulty={difficulty}
-        timer={timer}
-      />
+      <Suspense fallback={null}>
+        <ContinueGamePopup
+          isOpen={showContinuePopup}
+          onContinue={handleContinueGame}
+          onNewGame={handleContinueNewGame}
+          onClose={() => setShowContinuePopup(false)}
+          difficulty={difficulty}
+          timer={timer}
+        />
+      </Suspense>
 
       {/* Difficulty Popup - Outside app container to avoid blur */}
-      <DifficultyPopup
-        isOpen={showDifficultyPopup}
-        onClose={() => {
-          setShowDifficultyPopup(false);
-          // If game is paused when difficulty popup closes, ensure proper state
-          if (isPaused && grid && originalGrid) {
-            // Game exists, just resume it
-            setIsPaused(false);
-            setIsTimerRunning(gameStatus === 'playing');
-          }
-        }}
-        onSelectDifficulty={handleDifficultySelect}
-        currentDifficulty={difficulty}
-        canClose={!!(grid && originalGrid)} // Only allow closing if there's an existing game
-      />
+      <Suspense fallback={null}>
+        <DifficultyPopup
+          isOpen={showDifficultyPopup}
+          onClose={() => {
+            setShowDifficultyPopup(false);
+            // If game is paused when difficulty popup closes, ensure proper state
+            if (isPaused && grid && originalGrid) {
+              // Game exists, just resume it
+              setIsPaused(false);
+              setIsTimerRunning(gameStatus === 'playing');
+            }
+          }}
+          onSelectDifficulty={handleDifficultySelect}
+          currentDifficulty={difficulty}
+          canClose={!!(grid && originalGrid)} // Only allow closing if there's an existing game
+        />
+      </Suspense>
 
       {/* Completion Popup - Outside app container to avoid blur */}
       {completionData && (
-        <CompletionPopup
-          isOpen={showCompletionPopup}
-          onClose={() => setShowCompletionPopup(false)}
-          onNewGame={handleCompletionNewGame}
-          onShare={handleCompletionShare}
-          difficulty={completionData.difficulty}
-          timer={completionData.timer}
-          lives={completionData.lives}
-          isNewRecord={completionData.isNewRecord}
-          bestTime={completionData.bestTime}
-          totalGamesPlayed={completionData.totalGamesPlayed}
-          averageTime={completionData.averageTime}
-        />
+        <Suspense fallback={null}>
+          <CompletionPopup
+            isOpen={showCompletionPopup}
+            onClose={() => setShowCompletionPopup(false)}
+            onNewGame={handleCompletionNewGame}
+            onShare={handleCompletionShare}
+            difficulty={completionData.difficulty}
+            timer={completionData.timer}
+            lives={completionData.lives}
+            isNewRecord={completionData.isNewRecord}
+            bestTime={completionData.bestTime}
+            totalGamesPlayed={completionData.totalGamesPlayed}
+            averageTime={completionData.averageTime}
+          />
+        </Suspense>
       )}
     </>
   );

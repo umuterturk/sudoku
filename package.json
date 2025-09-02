@@ -5,9 +5,12 @@
   "main": "index.js",
   "scripts": {
     "dev": "npx vite",
-    "build": "npx vite build",
+    "build": "npx vite build && node optimize-build.js",
+    "build:analyze": "npx vite build --mode analyze && node optimize-build.js",
+    "build:prod": "npm run build",
     "preview": "npx vite preview",
-    "deploy": "npm run build && gh-pages -d dist"
+    "deploy": "npm run build && gh-pages -d dist",
+    "optimize": "node optimize-build.js"
   },
   "dependencies": {
     "@emotion/react": "^11.14.0",
@@ -19,8 +22,9 @@
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.2.1",
-    "vite": "^5.1.0",
-    "gh-pages": "^6.1.1"
+    "gh-pages": "^6.1.1",
+    "terser": "^5.43.1",
+    "vite": "^5.1.0"
   },
   "keywords": [
     "sudoku",

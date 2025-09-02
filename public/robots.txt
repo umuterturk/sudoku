@@ -1,0 +1,6 @@
+User-agent: *
+Allow: /sudoku/
+
+Sitemap: https://umuterturk.github.io/sudoku/sitemap.xml
+
+
