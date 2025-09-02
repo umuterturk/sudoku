@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sudoku Game</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+        }
+        #root {
+            width: 100%;
+            height: 100vh;
+        }
+        
+        /* Static loading screen - shows before React loads */
+        .static-loading-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 10000;
+        }
+        
+        .static-loading-content {
+            text-align: center;
+            padding: 40px;
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            min-width: 280px;
+            max-width: 400px;
+        }
+        
+        .static-loading-spinner {
+            width: 60px;
+            height: 60px;
+            border: 4px solid #e3f2fd;
+            border-top: 4px solid #2196f3;
+            border-radius: 50%;
+            animation: static-spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+        
+        .static-loading-title {
+            color: #333;
+            font-size: 24px;
+            font-weight: 600;
+            margin: 0 0 10px 0;
+        }
+        
+        .static-loading-message {
+            color: #666;
+            font-size: 16px;
+            margin: 0 0 20px 0;
+        }
+        
+        .static-loading-dots {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .static-loading-dots span {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #2196f3;
+            animation: static-bounce 1.4s ease-in-out infinite both;
+        }
+        
+        .static-loading-dots span:nth-child(1) { animation-delay: -0.32s; }
+        .static-loading-dots span:nth-child(2) { animation-delay: -0.16s; }
+        
+        @keyframes static-spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        @keyframes static-bounce {
+            0%, 80%, 100% {
+                transform: scale(0);
+                opacity: 0.5;
+            }
+            40% {
+                transform: scale(1);
+                opacity: 1;
+            }
+        }
+        
+        /* Hide static loading when React app loads */
+        .react-loaded .static-loading-screen {
+            display: none;
+        }
+        
+        /* Mobile responsiveness */
+        @media (max-width: 768px) {
+            .static-loading-content {
+                margin: 20px;
+                padding: 30px 20px;
+                min-width: auto;
+            }
+        }
+    </style>
+  <script type="module" crossorigin src="/sudoku/assets/index-DkNe725a.js"></script>
+  <link rel="modulepreload" crossorigin href="/sudoku/assets/vendor-DmYCJ7NU.js">
+  <link rel="modulepreload" crossorigin href="/sudoku/assets/mui-DL1rCPfE.js">
+  <link rel="stylesheet" crossorigin href="/sudoku/assets/index-QiP5qzCD.css">
+</head>
+<body>
+    <!-- Static loading screen - shows immediately before React loads -->
+    <div class="static-loading-screen" id="static-loader">
+        <div class="static-loading-content">
+            <div class="static-loading-spinner"></div>
+            <h1 class="static-loading-title">Sudoku</h1>
+            <p class="static-loading-message">Loading game...</p>
+            <div class="static-loading-dots">
+                <span></span>
+                <span></span>
+                <span></span>
+            </div>
+        </div>
+    </div>
+    
+    <div id="root"></div>
+    
+    <script>
+        // Log when static loading screen appears (before any libs load)
+        console.log('🎯 Static loading screen displayed - no white screen!');
+        console.log('📦 Loading React and dependencies...');
+    </script>
+    
+</body>
+</html>
