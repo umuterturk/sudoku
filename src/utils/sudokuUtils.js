@@ -476,10 +476,16 @@ export const generatePuzzle = async (difficulty = 'medium') => {
     let puzzle = stringToGrid(puzzleString);
     const solution = stringToGrid(solutionString);
     
-    // For children mode, fill 3 random 3x3 boxes completely
+    // For children mode, invert the puzzle (swap revealed and unrevealed cells)
     if (difficulty === 'children') {
-      puzzle = fillRandomBoxes(puzzle, solution, 3);
-      console.log('🎮 Children mode: filled 3 random 3x3 boxes to make it easier');
+      puzzle = invertPuzzle(puzzle, solution);
+      console.log('🎮 Children mode: inverted puzzle to create unique solving experience');
+    }
+    
+    // For easy mode, reveal 5 additional random cells to make it more accessible
+    if (difficulty === 'easy') {
+      puzzle = revealAdditionalCells(puzzle, solution, 5);
+      console.log('🌟 Easy mode: revealed 5 additional cells for better accessibility');
     }
     
     return {
@@ -650,6 +656,70 @@ export const fillRandomBoxes = (puzzle, solution, numBoxes = 1) => {
 // Backward compatibility: Fill a single random 3x3 box
 export const fillRandomBox = (puzzle, solution) => {
   return fillRandomBoxes(puzzle, solution, 1);
+};
+
+// Invert puzzle: swap revealed and unrevealed cells (for children mode)
+export const invertPuzzle = (puzzle, solution) => {
+  console.log('🔄 Inverting puzzle: swapping revealed and unrevealed cells...');
+  
+  // Create a copy to modify
+  const invertedPuzzle = puzzle.map(row => [...row]);
+  
+  let originalRevealed = 0;
+  let newRevealed = 0;
+  
+  // Swap revealed and unrevealed cells
+  for (let row = 0; row < 9; row++) {
+    for (let col = 0; col < 9; col++) {
+      if (puzzle[row][col] !== 0) {
+        // This cell was originally revealed - make it empty
+        invertedPuzzle[row][col] = 0;
+        originalRevealed++;
+      } else {
+        // This cell was originally empty - fill it with solution
+        invertedPuzzle[row][col] = solution[row][col];
+        newRevealed++;
+      }
+    }
+  }
+  
+  console.log(`🎮 Puzzle inverted! Original revealed: ${originalRevealed}, New revealed: ${newRevealed}`);
+  console.log(`📊 Children mode now has ${newRevealed} clues instead of ${originalRevealed}`);
+  
+  return invertedPuzzle;
+};
+
+// Reveal additional random cells for easy mode
+const revealAdditionalCells = (puzzle, solution, count) => {
+  console.log(`🌟 Revealing ${count} additional cells for easy mode...`);
+  
+  const modifiedPuzzle = puzzle.map(row => [...row]);
+  
+  // Find all empty cells (cells that are 0 in the puzzle)
+  const emptyCells = [];
+  for (let row = 0; row < 9; row++) {
+    for (let col = 0; col < 9; col++) {
+      if (puzzle[row][col] === 0) {
+        emptyCells.push({ row, col });
+      }
+    }
+  }
+  
+  // If we don't have enough empty cells, reveal what we can
+  const cellsToReveal = Math.min(count, emptyCells.length);
+  console.log(`🎯 Found ${emptyCells.length} empty cells, revealing ${cellsToReveal} of them`);
+  
+  // Randomly select cells to reveal
+  const shuffledEmptyCells = emptyCells.sort(() => Math.random() - 0.5);
+  
+  for (let i = 0; i < cellsToReveal; i++) {
+    const { row, col } = shuffledEmptyCells[i];
+    modifiedPuzzle[row][col] = solution[row][col];
+    console.log(`✨ Revealed cell [${row},${col}] = ${solution[row][col]}`);
+  }
+  
+  console.log(`✅ Successfully revealed ${cellsToReveal} additional cells for easy mode`);
+  return modifiedPuzzle;
 };
 
 // IDCLIP cheat code: Fill a random 3x3 box (like no-clipping through walls in DOOM)

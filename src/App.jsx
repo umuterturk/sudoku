@@ -10,7 +10,7 @@ const ResetConfirmationPopup = React.lazy(() => import('./components/ResetConfir
 const ContinueGamePopup = React.lazy(() => import('./components/ContinueGamePopup'));
 const CompletionPopup = React.lazy(() => import('./components/CompletionPopup'));
 import { generatePuzzle, isGridComplete, isGridValid, isValidMove, loadPuzzleDatabase, enableFlightMode, isFlightModeEnabled, isFlightModeEnabledSync, disableFlightMode, refreshFlightModeCacheIfNeeded, getFlightModeCacheStats, getRandomAnimationPuzzles, stringToGrid, parseGameFromUrl, generateShareableUrl, addGameRecord, getDifficultyRecord, getCompletedSections, findCellsWithOnePossibility, idclipCheat } from './utils/sudokuUtils';
-import { playCompletionSound, playMultipleCompletionSound } from './utils/audioUtils';
+import { playCompletionSound, playMultipleCompletionSound, createCompletionSound } from './utils/audioUtils';
 import { Undo, Add, Refresh, Lightbulb, LightbulbOutlined, Circle, FiberManualRecord, Pause, PlayArrow, Share, Menu, VolumeUp, VolumeOff, Edit, EditOutlined, FlightTakeoff, FlightLand } from '@mui/icons-material';
 import { Drawer, List, ListItem, ListItemButton, ListItemIcon, ListItemText, IconButton, Divider, Box, Typography } from '@mui/material';
 import './App.css';
@@ -153,6 +153,11 @@ function App() {
         if (isGridValid(newGrid)) {
           setGameStatus('completed');
           setIsTimerRunning(false);
+          
+          // Play completion sound (only if sound is enabled)
+          if (isSoundEnabled) {
+            createCompletionSound();
+          }
           
           // Record the completion and show popup
           const recordData = addGameRecord(difficulty, timer);
@@ -593,6 +598,11 @@ function App() {
       if (isGridValid(newGrid)) {
         setGameStatus('completed');
         setIsTimerRunning(false);
+        
+        // Play completion sound (only if sound is enabled)
+        if (isSoundEnabled) {
+          createCompletionSound();
+        }
         
         // Record the completion and show popup
         const recordData = addGameRecord(difficulty, timer);

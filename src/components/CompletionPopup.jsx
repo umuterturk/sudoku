@@ -1,4 +1,6 @@
 
+import { EmojiEvents, Share, Refresh, Add } from '@mui/icons-material';
+
 const CompletionPopup = ({ 
   isOpen, 
   onClose, 

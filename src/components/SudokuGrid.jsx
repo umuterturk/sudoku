@@ -150,7 +150,11 @@ const SudokuGrid = ({
 
   // Check if a cell should be highlighted green (for single possibility hint)
   const isGreenHighlighted = (row, col) => {
-    return highlightedCells.some(cell => cell.row === row && cell.col === col);
+    const isHighlighted = highlightedCells.some(cell => cell.row === row && cell.col === col);
+    if (isHighlighted) {
+      console.log(`🟢 Cell (${row}, ${col}) is green highlighted`);
+    }
+    return isHighlighted;
   };
 
 

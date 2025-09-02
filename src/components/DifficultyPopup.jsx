@@ -3,11 +3,11 @@ const DifficultyPopup = ({ isOpen, onClose, onSelectDifficulty, currentDifficult
   if (!isOpen) return null;
 
   const difficulties = [
-    { value: 'children', label: 'Children', description: 'Easy + 3 complete boxes' },
-    { value: 'easy', label: 'Easy', description: '36-46 clues' },
-    { value: 'medium', label: 'Medium', description: '27-35 clues' },
-    { value: 'hard', label: 'Hard', description: '17-26 clues' },
-    { value: 'expert', label: 'Expert', description: '17 clues minimum' }
+    { value: 'children', label: 'Children', description: 'Perfect for new learners too' },
+    { value: 'easy', label: 'Easy', description: 'Relaxed solving with extra hints' },
+    { value: 'medium', label: 'Medium', description: 'Balanced challenge for most players' },
+    { value: 'hard', label: 'Hard', description: 'Requires advanced techniques' },
+    { value: 'expert', label: 'Expert', description: 'Ultimate puzzle mastery test' }
   ];
 
   const handleDifficultySelect = (difficulty) => {
