@@ -21,15 +21,22 @@ export const initGA = () => {
     }
     window.gtag = gtag;
 
-    // Configure Google Analytics with proper domain and cookie settings
+    // Configure Google Analytics with cross-browser compatible settings
     gtag('js', new Date());
+    
+    // Detect if we're on GitHub Pages and configure accordingly
+    const isGitHubPages = window.location.hostname.includes('github.io');
+    const domain = isGitHubPages ? window.location.hostname : 'auto';
+    
     gtag('config', GA_TRACKING_ID, {
       page_title: 'Sudoku Game',
       page_location: window.location.href,
       send_page_view: true,
-      // Fix cookie domain issues for GitHub Pages and subdomains
-      cookie_domain: 'auto',
-      cookie_flags: 'SameSite=None;Secure',
+      // Firefox-compatible cookie domain configuration
+      cookie_domain: domain,
+      cookie_expires: 63072000, // 2 years in seconds
+      // Use Lax for better Firefox compatibility (fallback to None if needed)
+      cookie_flags: window.location.protocol === 'https:' ? 'SameSite=Lax;Secure' : 'SameSite=Lax',
       // Additional security and privacy settings
       anonymize_ip: true,
       allow_google_signals: false,
@@ -47,12 +54,16 @@ export const trackPageView = (page_title = 'Sudoku Game') => {
   if (typeof window === 'undefined' || !window.gtag) return;
   
   try {
+    // Use same domain detection logic as initialization
+    const isGitHubPages = window.location.hostname.includes('github.io');
+    const domain = isGitHubPages ? window.location.hostname : 'auto';
+    
     window.gtag('config', GA_TRACKING_ID, {
       page_title,
       page_location: window.location.href,
       send_page_view: true,
-      // Ensure consistent cookie domain configuration
-      cookie_domain: 'auto'
+      // Consistent Firefox-compatible cookie domain configuration
+      cookie_domain: domain
     });
     console.log('📊 Page view tracked:', page_title);
   } catch (error) {
