@@ -1099,7 +1099,7 @@
   .control-buttons {
     max-width: 24rem;
     margin: 0 auto;
-    padding: 1.25rem 0;
+    padding: 0 0;
   }
   
   .note {
