@@ -161,15 +161,16 @@ function App() {
           
           // Record the completion and show popup
           const recordData = addGameRecord(difficulty, timer);
+          const difficultyRecord = getDifficultyRecord(difficulty);
           
           setCompletionData({
             difficulty,
             timer,
             lives,
-            isNewRecord: recordData.isNewRecord,
-            bestTime: recordData.bestTime,
-            totalGamesPlayed: recordData.totalGames,
-            averageTime: recordData.averageTime
+            isNewRecord: recordData?.isNewRecord || false,
+            bestTime: recordData?.bestTime || difficultyRecord.bestTime,
+            totalGamesPlayed: recordData?.totalGames || difficultyRecord.totalGames,
+            averageTime: recordData?.averageTime || difficultyRecord.averageTime
           });
           
           // Clear saved game since it's completed
@@ -189,7 +190,35 @@ function App() {
   // Save game state to localStorage
   const saveGameState = (gameState) => {
     try {
-      localStorage.setItem('sudoku-game-state', JSON.stringify(gameState));
+      // Create a clean copy of gameState to avoid circular references
+      const cleanGameState = {
+        grid: gameState.grid,
+        originalGrid: gameState.originalGrid,
+        solution: gameState.solution,
+        selectedCell: gameState.selectedCell,
+        selectedNumber: gameState.selectedNumber,
+        difficulty: gameState.difficulty,
+        gameStatus: gameState.gameStatus,
+        timer: gameState.timer,
+        moveHistory: gameState.moveHistory,
+        lives: gameState.lives,
+        hintLevel: gameState.hintLevel,
+        isNotesMode: gameState.isNotesMode,
+        notes: gameState.notes,
+        isPaused: gameState.isPaused,
+        lastSaveTime: gameState.lastSaveTime
+      };
+      
+      // Debug: Check each property for circular references
+      for (const [key, value] of Object.entries(cleanGameState)) {
+        try {
+          JSON.stringify(value);
+        } catch (err) {
+          console.error(`Circular reference in ${key}:`, value, err);
+        }
+      }
+      
+      localStorage.setItem('sudoku-game-state', JSON.stringify(cleanGameState));
     } catch (error) {
       console.error('Failed to save game state:', error);
     }
@@ -342,7 +371,7 @@ function App() {
 
   // Auto-save game state
   useEffect(() => {
-    if (grid && originalGrid) {
+    if (grid && originalGrid && gameStatus !== 'completed') {
       const gameState = {
         grid,
         originalGrid,
@@ -612,10 +641,10 @@ function App() {
           difficulty,
           timer,
           lives,
-          isNewRecord: recordData.isNewRecord,
-          bestTime: recordData.bestTime,
-          totalGamesPlayed: recordData.totalGames,
-          averageTime: recordData.averageTime
+          isNewRecord: recordData?.isNewRecord || false,
+          bestTime: recordData?.bestTime || difficultyRecord.bestTime,
+          totalGamesPlayed: recordData?.totalGames || difficultyRecord.totalGames,
+          averageTime: recordData?.averageTime || difficultyRecord.averageTime
         });
         
         // Clear saved game since it's completed

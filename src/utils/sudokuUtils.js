@@ -885,24 +885,28 @@ const RECORDS_STORAGE_KEY = 'sudoku-records';
 
 // Get all records from localStorage
 export const getRecords = () => {
+  const defaultRecords = {
+    easy: { bestTime: null, totalGames: 0, totalTime: 0, averageTime: null },
+    children: { bestTime: null, totalGames: 0, totalTime: 0, averageTime: null },
+    medium: { bestTime: null, totalGames: 0, totalTime: 0, averageTime: null },
+    hard: { bestTime: null, totalGames: 0, totalTime: 0, averageTime: null },
+    expert: { bestTime: null, totalGames: 0, totalTime: 0, averageTime: null }
+  };
+
   try {
     const records = localStorage.getItem(RECORDS_STORAGE_KEY);
-    return records ? JSON.parse(records) : {
-      easy: { bestTime: null, totalGames: 0, totalTime: 0, averageTime: null },
-      children: { bestTime: null, totalGames: 0, totalTime: 0, averageTime: null },
-      medium: { bestTime: null, totalGames: 0, totalTime: 0, averageTime: null },
-      hard: { bestTime: null, totalGames: 0, totalTime: 0, averageTime: null },
-      expert: { bestTime: null, totalGames: 0, totalTime: 0, averageTime: null }
-    };
+    if (records) {
+      const existingRecords = JSON.parse(records);
+      // Merge existing records with default structure to ensure all difficulty levels exist
+      return {
+        ...defaultRecords,
+        ...existingRecords
+      };
+    }
+    return defaultRecords;
   } catch (error) {
     console.error('Failed to load records:', error);
-    return {
-      easy: { bestTime: null, totalGames: 0, totalTime: 0, averageTime: null },
-      children: { bestTime: null, totalGames: 0, totalTime: 0, averageTime: null },
-      medium: { bestTime: null, totalGames: 0, totalTime: 0, averageTime: null },
-      hard: { bestTime: null, totalGames: 0, totalTime: 0, averageTime: null },
-      expert: { bestTime: null, totalGames: 0, totalTime: 0, averageTime: null }
-    };
+    return defaultRecords;
   }
 };
 
@@ -919,6 +923,12 @@ export const saveRecords = (records) => {
 export const addGameRecord = (difficulty, completionTime) => {
   const records = getRecords();
   const difficultyRecord = records[difficulty];
+  
+  // Check if difficulty record exists
+  if (!difficultyRecord) {
+    console.error(`Invalid difficulty level: ${difficulty}. Available levels: ${Object.keys(records).join(', ')}`);
+    return null;
+  }
   
   // Update total games and time
   difficultyRecord.totalGames += 1;
@@ -947,7 +957,14 @@ export const addGameRecord = (difficulty, completionTime) => {
 // Get records for a specific difficulty
 export const getDifficultyRecord = (difficulty) => {
   const records = getRecords();
-  return records[difficulty] || { bestTime: null, totalGames: 0, totalTime: 0, averageTime: null };
+  const difficultyRecord = records[difficulty];
+  
+  if (!difficultyRecord) {
+    console.error(`Invalid difficulty level: ${difficulty}. Available levels: ${Object.keys(records).join(', ')}`);
+    return { bestTime: null, totalGames: 0, totalTime: 0, averageTime: null };
+  }
+  
+  return difficultyRecord;
 };
 
 // Find all empty cells that have only one valid possibility

@@ -110,7 +110,7 @@ const CompletionPopup = ({
             {getPerformanceMessage()}
           </div>
 
-          {(bestTime || totalGamesPlayed) && (
+          {(bestTime || (totalGamesPlayed && totalGamesPlayed > 1)) && (
             <div className="stat-row records">
               <div className="records-title">Your {difficulty.charAt(0).toUpperCase() + difficulty.slice(1)} Records</div>
               <div className="record-stats">
@@ -120,13 +120,13 @@ const CompletionPopup = ({
                     <span className="record-value">{formatTime(bestTime)}</span>
                   </div>
                 )}
-                {totalGamesPlayed && (
+                {totalGamesPlayed && totalGamesPlayed > 1 && (
                   <div className="record-item">
                     <span className="record-label">Games Played</span>
                     <span className="record-value">{totalGamesPlayed}</span>
                   </div>
                 )}
-                {averageTime && (
+                {averageTime && averageTime > 0 && totalGamesPlayed > 1 && (
                   <div className="record-item">
                     <span className="record-label">Average Time</span>
                     <span className="record-value">{formatTime(averageTime)}</span>
@@ -156,7 +156,7 @@ const CompletionPopup = ({
           </button>
           <button 
             className="btn btn-primary"
-            onClick={onNewGame}
+            onClick={() => onNewGame()}
             title="Choose a new difficulty"
           >
             <Add />
