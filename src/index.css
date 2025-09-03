@@ -13,6 +13,7 @@ body {
   -moz-osx-font-smoothing: grayscale;
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   height: 100vh;
+  height: 100dvh; /* Dynamic viewport height for better mobile support */
   color: #333;
   overflow: hidden;
 }
@@ -20,5 +21,6 @@ body {
 #root {
   width: 100%;
   height: 100vh;
+  height: 100dvh; /* Dynamic viewport height for better mobile support */
   overflow: hidden;
 }
