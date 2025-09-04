@@ -93,9 +93,9 @@ function App() {
 
     // Set up new 3-minute inactivity timer
     const timer = setTimeout(() => {
-      console.log('🤖 3 minutes of inactivity detected, triggering auto-hint');
+      console.log('🤖 2 minutes of inactivity detected, triggering auto-hint');
       showAutoHint();
-    }, 18000); // 3 minutes = 180,000 milliseconds
+    }, 120000); // 2 minutes = 120,000 milliseconds
 
     setAutoHintTimer(timer);
 
