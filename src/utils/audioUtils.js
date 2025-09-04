@@ -322,3 +322,40 @@ export const createHintSound = () => {
     console.log('Hint sound not available:', error);
   }
 };
+
+// Create a digit completion sound (similar to row/column completion)
+export const createDigitCompletionSound = () => {
+  try {
+    const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    
+    const playNote = (frequency, startTime, duration, volume = 0.15, type = 'sine') => {
+      const oscillator = audioContext.createOscillator();
+      const gainNode = audioContext.createGain();
+      
+      oscillator.connect(gainNode);
+      gainNode.connect(audioContext.destination);
+      
+      oscillator.frequency.setValueAtTime(frequency, startTime);
+      oscillator.type = type;
+      
+      gainNode.gain.setValueAtTime(0, startTime);
+      gainNode.gain.linearRampToValueAtTime(volume, startTime + 0.01);
+      gainNode.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
+      
+      oscillator.start(startTime);
+      oscillator.stop(startTime + duration);
+    };
+    
+    const now = audioContext.currentTime;
+    
+    // 🔢 DIGIT COMPLETION SOUND - "All done!" progression
+    // Similar to row/column but with a unique ascending pattern
+    playNote(523.25, now, 0.1, 0.12);         // C5
+    playNote(659.25, now + 0.06, 0.1, 0.14);  // E5
+    playNote(783.99, now + 0.12, 0.15, 0.16); // G5
+    playNote(1046.50, now + 0.18, 0.2, 0.14); // C6 - satisfying finish
+    
+  } catch (error) {
+    console.log('Digit completion sound not available:', error);
+  }
+};

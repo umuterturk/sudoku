@@ -10,7 +10,7 @@ const ResetConfirmationPopup = React.lazy(() => import('./components/ResetConfir
 const ContinueGamePopup = React.lazy(() => import('./components/ContinueGamePopup'));
 const CompletionPopup = React.lazy(() => import('./components/CompletionPopup'));
 import { generatePuzzle, isGridComplete, isGridValid, isValidMove, loadPuzzleDatabase, enableFlightMode, isFlightModeEnabled, isFlightModeEnabledSync, disableFlightMode, refreshFlightModeCacheIfNeeded, getFlightModeCacheStats, getRandomAnimationPuzzles, stringToGrid, parseGameFromUrl, generateShareableUrl, addGameRecord, getDifficultyRecord, getCompletedSections, findCellsWithOnePossibility, idclipCheat } from './utils/sudokuUtils';
-import { playCompletionSound, playMultipleCompletionSound, createCompletionSound, createPerfectGameSound, createHintSound } from './utils/audioUtils';
+import { playCompletionSound, playMultipleCompletionSound, createCompletionSound, createPerfectGameSound, createHintSound, createDigitCompletionSound } from './utils/audioUtils';
 import { initGA, trackPageView, trackGameStarted, trackGameCompleted, trackGameOver, trackHintUsed, trackFlightModeToggle } from './utils/analytics';
 import { Undo, Add, Refresh, Lightbulb, LightbulbOutlined, Circle, FiberManualRecord, Pause, PlayArrow, Share, Menu, VolumeUp, VolumeOff, Edit, EditOutlined, FlightTakeoff, FlightLand } from '@mui/icons-material';
 import { Drawer, List, ListItem, ListItemButton, ListItemIcon, ListItemText, IconButton, Divider, Box, Typography } from '@mui/material';
@@ -680,12 +680,25 @@ function App() {
       // Check for completed sections (only if it's a correct move)
       const completedSections = getCompletedSections(oldGrid, newGrid, row, col);
       
+      // Check if the placed digit is now complete (all 9 instances placed)
+      const wasDigitIncomplete = !checkDigitCompletion(oldGrid, digit);
+      const isDigitNowComplete = checkDigitCompletion(newGrid, digit);
+      
+      if (wasDigitIncomplete && isDigitNowComplete) {
+        console.log(`🔢 Digit ${digit} is now complete! All 9 instances placed.`);
+        
+        // Play digit completion sound (only if sound is enabled)
+        if (isSoundEnabled) {
+          createDigitCompletionSound();
+        }
+      }
+      
       if (completedSections.rows.length > 0 || completedSections.columns.length > 0 || completedSections.boxes.length > 0) {
         // Set the glowing completions
         setGlowingCompletions(completedSections);
         
-        // Play completion sound (only if sound is enabled)
-        if (isSoundEnabled) {
+        // Play completion sound (only if sound is enabled) - but don't overlap with digit completion sound
+        if (isSoundEnabled && !(wasDigitIncomplete && isDigitNowComplete)) {
           const totalCompletions = completedSections.rows.length + completedSections.columns.length + completedSections.boxes.length;
           if (totalCompletions > 1) {
             // Multiple completions - play elaborate sound
@@ -879,6 +892,19 @@ function App() {
       console.log('🔍 Removing highlighted cells after 2 seconds');
       setHighlightedCells([]);
     }, 2000);
+  };
+
+  // Function to check if a digit has been completed (all 9 instances placed)
+  const checkDigitCompletion = (grid, digit) => {
+    let count = 0;
+    for (let row = 0; row < 9; row++) {
+      for (let col = 0; col < 9; col++) {
+        if (grid[row][col] === digit) {
+          count++;
+        }
+      }
+    }
+    return count === 9; // Return true if all 9 instances are placed
   };
 
   // Function to show automatic hint for easy/children modes
