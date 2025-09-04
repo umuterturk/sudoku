@@ -61,11 +61,61 @@ function App() {
   const [highlightedCells, setHighlightedCells] = useState([]);
   const [longPressTimer, setLongPressTimer] = useState(null);
   const [isLongPressTriggered, setIsLongPressTriggered] = useState(false);
+  
+  // Auto-hint system for easy and children modes
+  const [lastMoveTime, setLastMoveTime] = useState(Date.now());
+  const [autoHintTimer, setAutoHintTimer] = useState(null);
 
   // Debug effect to log when highlightedCells changes
   useEffect(() => {
     console.log('🔍 highlightedCells state changed:', highlightedCells);
   }, [highlightedCells]);
+
+  // Auto-hint system: track moves and set up inactivity timer
+  useEffect(() => {
+    // Only enable auto-hint for easy and children modes
+    if (difficulty !== 'easy' && difficulty !== 'children') {
+      return;
+    }
+
+    // Only track moves during active gameplay
+    if (gameStatus !== 'playing' || isPaused || isAnimating) {
+      return;
+    }
+
+    // Update last move time whenever move history changes
+    setLastMoveTime(Date.now());
+    
+    // Clear existing auto-hint timer
+    if (autoHintTimer) {
+      clearTimeout(autoHintTimer);
+    }
+
+    // Set up new 3-minute inactivity timer
+    const timer = setTimeout(() => {
+      console.log('🤖 3 minutes of inactivity detected, triggering auto-hint');
+      showAutoHint();
+    }, 18000); // 3 minutes = 180,000 milliseconds
+
+    setAutoHintTimer(timer);
+
+    // Cleanup timer on unmount or dependency change
+    return () => {
+      if (timer) {
+        clearTimeout(timer);
+      }
+    };
+  }, [moveHistory, difficulty, gameStatus, isPaused, isAnimating]);
+
+  // Clean up auto-hint timer when game ends or pauses
+  useEffect(() => {
+    if (gameStatus !== 'playing' || isPaused) {
+      if (autoHintTimer) {
+        clearTimeout(autoHintTimer);
+        setAutoHintTimer(null);
+      }
+    }
+  }, [gameStatus, isPaused]);
 
   // Debug function for testing hint long press from console
   const testHintLongPress = () => {
@@ -73,11 +123,19 @@ function App() {
     handleHintLongPress();
   };
 
-  // Make test function available globally for debugging
+  // Debug function for testing auto-hint from console
+  const testAutoHint = () => {
+    console.log('🧪 Testing auto-hint manually...');
+    showAutoHint();
+  };
+
+  // Make test functions available globally for debugging
   useEffect(() => {
     window.testHintLongPress = testHintLongPress;
+    window.testAutoHint = testAutoHint;
     return () => {
       delete window.testHintLongPress;
+      delete window.testAutoHint;
     };
   }, [grid]);
   
@@ -441,6 +499,13 @@ function App() {
     setNotes(Array(9).fill().map(() => Array(9).fill().map(() => [])));
     setIsPaused(false);
     
+    // Reset auto-hint system for new game
+    setLastMoveTime(Date.now());
+    if (autoHintTimer) {
+      clearTimeout(autoHintTimer);
+      setAutoHintTimer(null);
+    }
+    
     // Clear any existing saved state when starting new game
     localStorage.removeItem('sudoku-game-state');
     
@@ -724,6 +789,13 @@ function App() {
       columns: [],
       boxes: []
     });
+    
+    // Reset auto-hint system
+    setLastMoveTime(Date.now());
+    if (autoHintTimer) {
+      clearTimeout(autoHintTimer);
+      setAutoHintTimer(null);
+    }
   };
 
   const handleUndo = () => {
@@ -807,6 +879,45 @@ function App() {
       console.log('🔍 Removing highlighted cells after 2 seconds');
       setHighlightedCells([]);
     }, 2000);
+  };
+
+  // Function to show automatic hint for easy/children modes
+  const showAutoHint = () => {
+    console.log('🤖 Auto-hint triggered for inactivity!');
+    
+    if (!grid) {
+      console.log('❌ No grid available for auto-hint');
+      return;
+    }
+    
+    // Find cells with only one possibility
+    const cellsWithOnePossibility = findCellsWithOnePossibility(grid);
+    
+    if (cellsWithOnePossibility.length === 0) {
+      console.log('❌ No cells with single possibility found for auto-hint');
+      return;
+    }
+    
+    // Show only ONE random cell with a single possibility
+    const randomIndex = Math.floor(Math.random() * cellsWithOnePossibility.length);
+    const selectedCell = cellsWithOnePossibility[randomIndex];
+    
+    console.log(`🤖 Auto-hint: showing cell (${selectedCell.row}, ${selectedCell.col}) with value ${selectedCell.number}`);
+    
+    // Highlight just this one cell
+    setHighlightedCells([{
+      row: selectedCell.row,
+      col: selectedCell.col
+    }]);
+    
+    // Remove the highlight after 5 seconds (longer for auto-hint)
+    setTimeout(() => {
+      console.log('🤖 Removing auto-hint highlight after 5 seconds');
+      setHighlightedCells([]);
+    }, 5000);
+    
+    // Track auto-hint usage
+    trackHintUsed('auto', difficulty);
   };
 
   const handleHintMouseDown = (event) => {
