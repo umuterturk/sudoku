@@ -282,3 +282,43 @@ export const createPerfectGameSound = () => {
     console.log('Perfect game sound not available:', error);
   }
 };
+
+// Create a gentle hint sound for auto-hints
+export const createHintSound = () => {
+  try {
+    const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    
+    const playNote = (frequency, startTime, duration, volume = 0.08, type = 'sine') => {
+      const oscillator = audioContext.createOscillator();
+      const gainNode = audioContext.createGain();
+      
+      oscillator.connect(gainNode);
+      gainNode.connect(audioContext.destination);
+      
+      oscillator.frequency.setValueAtTime(frequency, startTime);
+      oscillator.type = type;
+      
+      // Gentle envelope for a soft, pleasant sound
+      gainNode.gain.setValueAtTime(0, startTime);
+      gainNode.gain.linearRampToValueAtTime(volume, startTime + 0.05);
+      gainNode.gain.exponentialRampToValueAtTime(volume * 0.3, startTime + duration * 0.7);
+      gainNode.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
+      
+      oscillator.start(startTime);
+      oscillator.stop(startTime + duration);
+    };
+    
+    const now = audioContext.currentTime;
+    
+    // 💡 GENTLE HINT SOUND - Soft "ding-dong" chime
+    // Two-tone chime that's pleasant but not intrusive
+    playNote(659.25, now, 0.4, 0.06, 'sine');      // E5 - first chime
+    playNote(523.25, now + 0.15, 0.5, 0.08, 'sine'); // C5 - second chime (lower, warmer)
+    
+    // Optional subtle harmonic for richness
+    playNote(783.99, now + 0.02, 0.3, 0.03, 'triangle'); // G5 - very soft harmonic
+    
+  } catch (error) {
+    console.log('Hint sound not available:', error);
+  }
+};

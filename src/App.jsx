@@ -10,7 +10,7 @@ const ResetConfirmationPopup = React.lazy(() => import('./components/ResetConfir
 const ContinueGamePopup = React.lazy(() => import('./components/ContinueGamePopup'));
 const CompletionPopup = React.lazy(() => import('./components/CompletionPopup'));
 import { generatePuzzle, isGridComplete, isGridValid, isValidMove, loadPuzzleDatabase, enableFlightMode, isFlightModeEnabled, isFlightModeEnabledSync, disableFlightMode, refreshFlightModeCacheIfNeeded, getFlightModeCacheStats, getRandomAnimationPuzzles, stringToGrid, parseGameFromUrl, generateShareableUrl, addGameRecord, getDifficultyRecord, getCompletedSections, findCellsWithOnePossibility, idclipCheat } from './utils/sudokuUtils';
-import { playCompletionSound, playMultipleCompletionSound, createCompletionSound, createPerfectGameSound } from './utils/audioUtils';
+import { playCompletionSound, playMultipleCompletionSound, createCompletionSound, createPerfectGameSound, createHintSound } from './utils/audioUtils';
 import { initGA, trackPageView, trackGameStarted, trackGameCompleted, trackGameOver, trackHintUsed, trackFlightModeToggle } from './utils/analytics';
 import { Undo, Add, Refresh, Lightbulb, LightbulbOutlined, Circle, FiberManualRecord, Pause, PlayArrow, Share, Menu, VolumeUp, VolumeOff, Edit, EditOutlined, FlightTakeoff, FlightLand } from '@mui/icons-material';
 import { Drawer, List, ListItem, ListItemButton, ListItemIcon, ListItemText, IconButton, Divider, Box, Typography } from '@mui/material';
@@ -909,6 +909,11 @@ function App() {
       row: selectedCell.row,
       col: selectedCell.col
     }]);
+    
+    // Play gentle hint sound (only if sound is enabled)
+    if (isSoundEnabled) {
+      createHintSound();
+    }
     
     // Remove the highlight after 5 seconds (longer for auto-hint)
     setTimeout(() => {
