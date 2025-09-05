@@ -1,4 +1,4 @@
-import React, { useState, useEffect, Suspense } from 'react';
+import React, { useState, useEffect, Suspense, Component } from 'react';
 import SudokuGrid from './components/SudokuGrid';
 import DigitButtons from './components/DigitButtons';
 import Hearts from './components/Hearts';
@@ -15,6 +15,73 @@ import { initGA, trackPageView, trackGameStarted, trackGameCompleted, trackGameO
 import { Undo, Add, Refresh, Lightbulb, LightbulbOutlined, Circle, FiberManualRecord, Pause, PlayArrow, Share, Menu, VolumeUp, VolumeOff, Edit, EditOutlined, FlightTakeoff, FlightLand } from '@mui/icons-material';
 import { Drawer, List, ListItem, ListItemButton, ListItemIcon, ListItemText, IconButton, Divider, Box, Typography } from '@mui/material';
 import './App.css';
+
+// Error Boundary Component
+class ErrorBoundary extends Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error, errorInfo) {
+    console.error('Error Boundary caught an error:', error, errorInfo);
+    
+    // Clear corrupted localStorage
+    try {
+      localStorage.removeItem('sudoku-game-state');
+    } catch (e) {
+      console.error('Failed to clear localStorage in error boundary:', e);
+    }
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          height: '100vh',
+          padding: '20px',
+          textAlign: 'center',
+          backgroundColor: '#f8f9fa'
+        }}>
+          <h2 style={{ color: '#e53e3e', marginBottom: '20px' }}>
+            Oops! Something went wrong
+          </h2>
+          <p style={{ color: '#4a5568', marginBottom: '30px', maxWidth: '500px' }}>
+            The game encountered an unexpected error. Don't worry, your progress has been saved and the game will restart fresh.
+          </p>
+          <button
+            onClick={() => {
+              this.setState({ hasError: false, error: null });
+              window.location.reload();
+            }}
+            style={{
+              backgroundColor: '#4299e1',
+              color: 'white',
+              border: 'none',
+              padding: '12px 24px',
+              borderRadius: '6px',
+              fontSize: '16px',
+              cursor: 'pointer',
+              fontWeight: '500'
+            }}
+          >
+            Restart Game
+          </button>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
 
 function App() {
   const [grid, setGrid] = useState(null);
@@ -256,9 +323,15 @@ function App() {
     }
   };
 
-  // Save game state to localStorage
+  // Save game state to localStorage with robust error handling
   const saveGameState = (gameState) => {
     try {
+      // Validate game state before saving
+      if (!gameState || !isValidGameState(gameState)) {
+        console.warn('Invalid game state, skipping save');
+        return;
+      }
+
       // Create a clean copy of gameState to avoid circular references
       const cleanGameState = {
         grid: gameState.grid,
@@ -269,40 +342,131 @@ function App() {
         difficulty: gameState.difficulty,
         gameStatus: gameState.gameStatus,
         timer: gameState.timer,
-        moveHistory: gameState.moveHistory,
-        lives: gameState.lives,
-        hintLevel: gameState.hintLevel,
-        isNotesMode: gameState.isNotesMode,
-        notes: gameState.notes,
-        isPaused: gameState.isPaused,
-        errorCells: gameState.errorCells,
-        undosUsed: gameState.undosUsed
+        moveHistory: gameState.moveHistory || [],
+        lives: gameState.lives || 3,
+        hintLevel: gameState.hintLevel || 'medium',
+        isNotesMode: gameState.isNotesMode || false,
+        notes: gameState.notes || Array(9).fill().map(() => Array(9).fill().map(() => [])),
+        isPaused: gameState.isPaused || false,
+        errorCells: gameState.errorCells || [],
+        undosUsed: gameState.undosUsed || 0
       };
       
-      // Debug: Check each property for circular references
-      for (const [key, value] of Object.entries(cleanGameState)) {
-        try {
-          JSON.stringify(value);
-        } catch (err) {
-          console.error(`Circular reference in ${key}:`, value, err);
-        }
+      // Test serialization before saving
+      const serializedState = JSON.stringify(cleanGameState);
+      
+      // Check if serialized data is too large (localStorage has ~5-10MB limit)
+      if (serializedState.length > 5 * 1024 * 1024) { // 5MB limit
+        console.warn('Game state too large, clearing old data and retrying');
+        localStorage.removeItem('sudoku-game-state');
+        // Try with minimal data
+        const minimalState = {
+          grid: cleanGameState.grid,
+          originalGrid: cleanGameState.originalGrid,
+          solution: cleanGameState.solution,
+          difficulty: cleanGameState.difficulty,
+          gameStatus: cleanGameState.gameStatus,
+          timer: cleanGameState.timer,
+          lives: cleanGameState.lives
+        };
+        localStorage.setItem('sudoku-game-state', JSON.stringify(minimalState));
+        return;
       }
       
-      localStorage.setItem('sudoku-game-state', JSON.stringify(cleanGameState));
+      localStorage.setItem('sudoku-game-state', serializedState);
     } catch (error) {
       console.error('Failed to save game state:', error);
+      // Try to clear localStorage if it's corrupted
+      try {
+        localStorage.removeItem('sudoku-game-state');
+        console.log('Cleared corrupted localStorage, game will continue without saving');
+      } catch (clearError) {
+        console.error('Failed to clear localStorage:', clearError);
+      }
     }
   };
 
-  // Load game state from localStorage
+  // Load game state from localStorage with robust error handling
   const loadGameState = () => {
     try {
       const savedState = localStorage.getItem('sudoku-game-state');
-      return savedState ? JSON.parse(savedState) : null;
+      if (!savedState) {
+        return null;
+      }
+
+      const parsedState = JSON.parse(savedState);
+      
+      // Validate the loaded state has required properties
+      if (!isValidGameState(parsedState)) {
+        console.warn('Invalid game state detected, clearing localStorage');
+        localStorage.removeItem('sudoku-game-state');
+        return null;
+      }
+
+      return parsedState;
     } catch (error) {
-      console.error('Failed to load game state:', error);
+      console.error('Failed to load game state, clearing corrupted data:', error);
+      // Clear corrupted data
+      try {
+        localStorage.removeItem('sudoku-game-state');
+      } catch (clearError) {
+        console.error('Failed to clear corrupted localStorage:', clearError);
+      }
       return null;
     }
+  };
+
+  // Validate game state structure
+  const isValidGameState = (state) => {
+    if (!state || typeof state !== 'object') {
+      return false;
+    }
+
+    // Check for required properties
+    const requiredProps = ['grid', 'originalGrid', 'solution', 'difficulty', 'gameStatus'];
+    for (const prop of requiredProps) {
+      if (!(prop in state)) {
+        console.warn(`Missing required property: ${prop}`);
+        return false;
+      }
+    }
+
+    // Validate grid structure
+    if (!Array.isArray(state.grid) || !Array.isArray(state.originalGrid) || !Array.isArray(state.solution)) {
+      console.warn('Invalid grid structure');
+      return false;
+    }
+
+    // Validate grid dimensions (9x9)
+    if (state.grid.length !== 9 || state.originalGrid.length !== 9 || state.solution.length !== 9) {
+      console.warn('Invalid grid dimensions');
+      return false;
+    }
+
+    for (let i = 0; i < 9; i++) {
+      if (!Array.isArray(state.grid[i]) || state.grid[i].length !== 9 ||
+          !Array.isArray(state.originalGrid[i]) || state.originalGrid[i].length !== 9 ||
+          !Array.isArray(state.solution[i]) || state.solution[i].length !== 9) {
+        console.warn('Invalid grid row structure');
+        return false;
+      }
+    }
+
+    // Validate difficulty
+    const validDifficulties = ['easy', 'children', 'medium', 'hard', 'expert'];
+    if (!validDifficulties.includes(state.difficulty)) {
+      console.warn('Invalid difficulty level');
+      return false;
+    }
+
+    // Validate game status
+    const validStatuses = ['playing', 'completed', 'error', 'game-over'];
+    if (!validStatuses.includes(state.gameStatus)) {
+      console.warn('Invalid game status');
+      return false;
+    }
+
+    return true;
   };
 
   // Make cheat codes globally accessible from console
@@ -341,68 +505,122 @@ function App() {
     };
   }, [idkfa, iddqd, idspispopd, idclip]);
 
-  // Initialize game
+  // Fallback function to ensure game can always start
+  const initializeFallbackGame = () => {
+    console.log('🔄 Initializing fallback game due to data corruption');
+    try {
+      // Clear any corrupted data
+      localStorage.removeItem('sudoku-game-state');
+      
+      // Reset all state to defaults
+      setGrid(null);
+      setOriginalGrid(null);
+      setSolution(null);
+      setSelectedCell(null);
+      setSelectedNumber(null);
+      setDifficulty('medium');
+      setGameStatus('playing');
+      setTimer(0);
+      setIsTimerRunning(false);
+      setMoveHistory([]);
+      setLives(3);
+      setIsShaking(false);
+      setHintLevel('medium');
+      setIsPaused(false);
+      setIsAnimating(false);
+      setAnimationGrid(null);
+      setNotes(Array(9).fill().map(() => Array(9).fill().map(() => [])));
+      setErrorCells([]);
+      setUndosUsed(0);
+      setGlowingCompletions({ rows: [], columns: [], boxes: [] });
+      
+      // Show difficulty popup to start fresh
+      setShowDifficultyPopup(true);
+    } catch (error) {
+      console.error('Failed to initialize fallback game:', error);
+      // Last resort: reload the page
+      window.location.reload();
+    }
+  };
+
+  // Initialize game with comprehensive error handling
   useEffect(() => {
     const initializeGame = async () => {
-      // First, check for URL game parameter
-      const urlGameState = parseGameFromUrl();
-      if (urlGameState) {
-        // Load game from URL
-        setGrid(urlGameState.grid);
-        setOriginalGrid(urlGameState.originalGrid);
-        setSolution(urlGameState.solution);
-        setSelectedCell(urlGameState.selectedCell);
-        setSelectedNumber(urlGameState.selectedNumber);
-        setDifficulty(urlGameState.difficulty);
-        setGameStatus(urlGameState.gameStatus);
-        setTimer(urlGameState.timer);
-        setMoveHistory(urlGameState.moveHistory);
-        setLives(urlGameState.lives);
-        setHintLevel(urlGameState.hintLevel);
-        setIsNotesMode(urlGameState.isNotesMode || false);
-        setNotes(urlGameState.notes || Array(9).fill().map(() => Array(9).fill().map(() => [])));
-        setErrorCells(urlGameState.errorCells || []);
-        setUndosUsed(urlGameState.undosUsed || 0);
-        setIsPaused(urlGameState.isPaused);
-        setIsTimerRunning(!urlGameState.isPaused && urlGameState.gameStatus === 'playing');
+      try {
+        // First, check for URL game parameter
+        const urlGameState = parseGameFromUrl();
+        if (urlGameState) {
+          try {
+            // Load game from URL
+            setGrid(urlGameState.grid);
+            setOriginalGrid(urlGameState.originalGrid);
+            setSolution(urlGameState.solution);
+            setSelectedCell(urlGameState.selectedCell);
+            setSelectedNumber(urlGameState.selectedNumber);
+            setDifficulty(urlGameState.difficulty);
+            setGameStatus(urlGameState.gameStatus);
+            setTimer(urlGameState.timer);
+            setMoveHistory(urlGameState.moveHistory);
+            setLives(urlGameState.lives);
+            setHintLevel(urlGameState.hintLevel);
+            setIsNotesMode(urlGameState.isNotesMode || false);
+            setNotes(urlGameState.notes || Array(9).fill().map(() => Array(9).fill().map(() => [])));
+            setErrorCells(urlGameState.errorCells || []);
+            setUndosUsed(urlGameState.undosUsed || 0);
+            setIsPaused(urlGameState.isPaused);
+            setIsTimerRunning(!urlGameState.isPaused && urlGameState.gameStatus === 'playing');
+            
+            // Clear the URL parameter after loading
+            const url = new URL(window.location);
+            url.searchParams.delete('game');
+            window.history.replaceState({}, document.title, url.toString());
+            
+            return; // Skip saved game check when loading from URL
+          } catch (urlError) {
+            console.error('Failed to load URL game, falling back:', urlError);
+            initializeFallbackGame();
+            return;
+          }
+        }
         
-        // Clear the URL parameter after loading
-        const url = new URL(window.location);
-        url.searchParams.delete('game');
-        window.history.replaceState({}, document.title, url.toString());
-        
-        return; // Skip saved game check when loading from URL
-      }
-      
-      // Check for saved game in localStorage
-      const savedState = loadGameState();
-      if (savedState) {
-        // Show continue game popup instead of directly restoring
-        setShowContinuePopup(true);
-        
-        // Restore saved game state (but don't start timer yet)
-        setGrid(savedState.grid);
-        setOriginalGrid(savedState.originalGrid);
-        setSolution(savedState.solution);
-        setSelectedCell(savedState.selectedCell);
-        setSelectedNumber(savedState.selectedNumber);
-        setDifficulty(savedState.difficulty);
-        setGameStatus('playing'); // Always set to playing for continue popup
-        setMoveHistory(savedState.moveHistory || []);
-        setLives(savedState.lives !== undefined ? savedState.lives : 3);
-        setHintLevel(savedState.hintLevel || 'medium');
-        setIsNotesMode(savedState.isNotesMode || false);
-        setNotes(savedState.notes || Array(9).fill().map(() => Array(9).fill().map(() => [])));
-        setErrorCells(savedState.errorCells || []);
-        setUndosUsed(savedState.undosUsed || 0);
-        setIsPaused(true); // Start paused when showing continue popup
-        
-        // Handle timer restoration - use saved timer value directly (incremental only)
-        setTimer(savedState.timer || 0);
-        setIsTimerRunning(false); // Don't start timer until they continue
-      } else {
-        // No saved game, show difficulty popup
-        setShowDifficultyPopup(true);
+        // Check for saved game in localStorage
+        const savedState = loadGameState();
+        if (savedState) {
+          try {
+            // Show continue game popup instead of directly restoring
+            setShowContinuePopup(true);
+            
+            // Restore saved game state (but don't start timer yet)
+            setGrid(savedState.grid);
+            setOriginalGrid(savedState.originalGrid);
+            setSolution(savedState.solution);
+            setSelectedCell(savedState.selectedCell);
+            setSelectedNumber(savedState.selectedNumber);
+            setDifficulty(savedState.difficulty);
+            setGameStatus('playing'); // Always set to playing for continue popup
+            setMoveHistory(savedState.moveHistory || []);
+            setLives(savedState.lives !== undefined ? savedState.lives : 3);
+            setHintLevel(savedState.hintLevel || 'medium');
+            setIsNotesMode(savedState.isNotesMode || false);
+            setNotes(savedState.notes || Array(9).fill().map(() => Array(9).fill().map(() => [])));
+            setErrorCells(savedState.errorCells || []);
+            setUndosUsed(savedState.undosUsed || 0);
+            setIsPaused(true); // Start paused when showing continue popup
+            
+            // Handle timer restoration - use saved timer value directly (incremental only)
+            setTimer(savedState.timer || 0);
+            setIsTimerRunning(false); // Don't start timer until they continue
+          } catch (restoreError) {
+            console.error('Failed to restore saved game, falling back:', restoreError);
+            initializeFallbackGame();
+          }
+        } else {
+          // No saved game, show difficulty popup
+          setShowDifficultyPopup(true);
+        }
+      } catch (error) {
+        console.error('Game initialization failed, using fallback:', error);
+        initializeFallbackGame();
       }
     };
 
@@ -585,7 +803,17 @@ function App() {
       console.error('Failed to start new game:', error);
       setIsLoading(false);
       setIsAnimating(false);
-      // Could show an error message to user here
+      
+      // Try fallback initialization
+      console.log('🔄 Attempting fallback game initialization...');
+      try {
+        initializeFallbackGame();
+      } catch (fallbackError) {
+        console.error('Fallback initialization also failed:', fallbackError);
+        // Last resort: show error message and reload
+        alert('Game failed to load. The page will reload.');
+        window.location.reload();
+      }
     }
   };
 
@@ -613,12 +841,13 @@ function App() {
   };
 
   const handleDigitSelect = (digit) => {
-    if (!selectedCell) return;
-    
-    const [row, col] = selectedCell;
-    if (originalGrid[row][col] !== 0) return; // Can't change original cells
-    
-    if (isNotesMode) {
+    try {
+      if (!selectedCell) return;
+      
+      const [row, col] = selectedCell;
+      if (!originalGrid || !originalGrid[row] || originalGrid[row][col] !== 0) return; // Can't change original cells
+      
+      if (isNotesMode) {
       // Handle notes mode
       if (digit === 0) {
         // Clear all notes from the selected cell when X is clicked
@@ -790,86 +1019,131 @@ function App() {
     } else if (gameStatus === 'error' && isGridValid(newGrid)) {
       setGameStatus('playing');
     }
+    } catch (error) {
+      console.error('Error in handleDigitSelect:', error);
+      // Try to recover by resetting to a safe state
+      try {
+        if (grid && originalGrid) {
+          setGrid(originalGrid.map(row => [...row]));
+          setErrorCells([]);
+          setGameStatus('playing');
+        }
+      } catch (recoveryError) {
+        console.error('Failed to recover from digit select error:', recoveryError);
+        initializeFallbackGame();
+      }
+    }
   };
 
   const handleCellClick = (row, col) => {
-    setSelectedCell([row, col]);
-    
-    // If clicking on a non-empty cell, highlight same numbers
-    const cellValue = grid[row][col];
-    if (cellValue !== 0) {
-      setSelectedNumber(cellValue);
-    } else {
-      // If clicking on empty cell, clear number highlighting
+    try {
+      setSelectedCell([row, col]);
+      
+      // If clicking on a non-empty cell, highlight same numbers
+      const cellValue = grid && grid[row] ? grid[row][col] : 0;
+      if (cellValue !== 0) {
+        setSelectedNumber(cellValue);
+      } else {
+        // If clicking on empty cell, clear number highlighting
+        setSelectedNumber(null);
+      }
+    } catch (error) {
+      console.error('Error in handleCellClick:', error);
+      // Reset to safe state
+      setSelectedCell(null);
       setSelectedNumber(null);
     }
   };
 
   const resetGame = () => {
-    setGrid(originalGrid.map(row => [...row]));
-    setSelectedCell(null);
-    setSelectedNumber(null);
-    setGameStatus('playing');
-    setTimer(0);
-    setIsTimerRunning(true);
-    setMoveHistory([]);
-    setLives(3);
-    setIsShaking(false);
-    setIsNotesMode(false);
-    setNotes(Array(9).fill().map(() => Array(9).fill().map(() => [])));
-    setIsPaused(false);
-    setErrorCells([]);
-    setUndosUsed(0);
-    setGlowingCompletions({
-      rows: [],
-      columns: [],
-      boxes: []
-    });
-    
-    // Reset auto-hint system
-    setLastMoveTime(Date.now());
-    if (autoHintTimer) {
-      clearTimeout(autoHintTimer);
-      setAutoHintTimer(null);
+    try {
+      if (!originalGrid) {
+        console.warn('No original grid available for reset, initializing fallback');
+        initializeFallbackGame();
+        return;
+      }
+      
+      setGrid(originalGrid.map(row => [...row]));
+      setSelectedCell(null);
+      setSelectedNumber(null);
+      setGameStatus('playing');
+      setTimer(0);
+      setIsTimerRunning(true);
+      setMoveHistory([]);
+      setLives(3);
+      setIsShaking(false);
+      setIsNotesMode(false);
+      setNotes(Array(9).fill().map(() => Array(9).fill().map(() => [])));
+      setIsPaused(false);
+      setErrorCells([]);
+      setUndosUsed(0);
+      setGlowingCompletions({
+        rows: [],
+        columns: [],
+        boxes: []
+      });
+      
+      // Reset auto-hint system
+      setLastMoveTime(Date.now());
+      if (autoHintTimer) {
+        clearTimeout(autoHintTimer);
+        setAutoHintTimer(null);
+      }
+    } catch (error) {
+      console.error('Error in resetGame:', error);
+      initializeFallbackGame();
     }
   };
 
   const handleUndo = () => {
-    if (moveHistory.length === 0 || undosUsed >= 3) return;
-    
-    const lastMove = moveHistory[moveHistory.length - 1];
-    const newGrid = grid.map(r => [...r]);
-    newGrid[lastMove.row][lastMove.col] = lastMove.previousValue;
-    
-    setGrid(newGrid);
-    setMoveHistory(prev => prev.slice(0, -1));
-    setUndosUsed(prev => prev + 1);
-    
-    // Update error cells based on the undone move
-    const { row, col } = lastMove;
-    const restoredValue = lastMove.previousValue;
-    
-    if (restoredValue === 0) {
-      // If we're restoring to an empty cell, remove it from error list
-      setErrorCells(prev => prev.filter(cell => !(cell.row === row && cell.col === col)));
-    } else if (solution && restoredValue !== solution[row][col]) {
-      // If we're restoring a wrong value, add it back to error list
-      setErrorCells(prev => {
-        const cellKey = `${row}-${col}`;
-        if (!prev.some(cell => cell.key === cellKey)) {
-          return [...prev, { row, col, key: cellKey }];
-        }
-        return prev;
-      });
-    } else {
-      // If we're restoring a correct value, remove it from error list
-      setErrorCells(prev => prev.filter(cell => !(cell.row === row && cell.col === col)));
-    }
-    
-    // Update game status if needed
-    if (gameStatus === 'completed' || gameStatus === 'error') {
-      setGameStatus('playing');
-      setIsTimerRunning(true);
+    try {
+      if (moveHistory.length === 0 || undosUsed >= 3) return;
+      
+      const lastMove = moveHistory[moveHistory.length - 1];
+      if (!lastMove || !grid) {
+        console.warn('Invalid undo data, clearing move history');
+        setMoveHistory([]);
+        return;
+      }
+      
+      const newGrid = grid.map(r => [...r]);
+      newGrid[lastMove.row][lastMove.col] = lastMove.previousValue;
+      
+      setGrid(newGrid);
+      setMoveHistory(prev => prev.slice(0, -1));
+      setUndosUsed(prev => prev + 1);
+      
+      // Update error cells based on the undone move
+      const { row, col } = lastMove;
+      const restoredValue = lastMove.previousValue;
+      
+      if (restoredValue === 0) {
+        // If we're restoring to an empty cell, remove it from error list
+        setErrorCells(prev => prev.filter(cell => !(cell.row === row && cell.col === col)));
+      } else if (solution && restoredValue !== solution[row][col]) {
+        // If we're restoring a wrong value, add it back to error list
+        setErrorCells(prev => {
+          const cellKey = `${row}-${col}`;
+          if (!prev.some(cell => cell.key === cellKey)) {
+            return [...prev, { row, col, key: cellKey }];
+          }
+          return prev;
+        });
+      } else {
+        // If we're restoring a correct value, remove it from error list
+        setErrorCells(prev => prev.filter(cell => !(cell.row === row && cell.col === col)));
+      }
+      
+      // Update game status if needed
+      if (gameStatus === 'completed' || gameStatus === 'error') {
+        setGameStatus('playing');
+        setIsTimerRunning(true);
+      }
+    } catch (error) {
+      console.error('Error in handleUndo:', error);
+      // Clear move history and reset to safe state
+      setMoveHistory([]);
+      setUndosUsed(0);
     }
   };
 
@@ -1594,4 +1868,11 @@ function App() {
   );
 }
 
-export default App;
+// Wrap App with ErrorBoundary for robust error handling
+const AppWithErrorBoundary = () => (
+  <ErrorBoundary>
+    <App />
+  </ErrorBoundary>
+);
+
+export default AppWithErrorBoundary;
