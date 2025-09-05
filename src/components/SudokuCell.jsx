@@ -13,7 +13,6 @@ const SudokuCell = ({
   isAnimating,
   shouldGlow,
   notes,
-  isNotesMode,
   isGreenHighlighted = false
 }) => {
   return (

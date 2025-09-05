@@ -9,10 +9,10 @@ const DifficultyPopup = React.lazy(() => import('./components/DifficultyPopup'))
 const ResetConfirmationPopup = React.lazy(() => import('./components/ResetConfirmationPopup'));
 const ContinueGamePopup = React.lazy(() => import('./components/ContinueGamePopup'));
 const CompletionPopup = React.lazy(() => import('./components/CompletionPopup'));
-import { generatePuzzle, isGridComplete, isGridValid, isValidMove, loadPuzzleDatabase, enableFlightMode, isFlightModeEnabled, isFlightModeEnabledSync, disableFlightMode, refreshFlightModeCacheIfNeeded, getFlightModeCacheStats, getRandomAnimationPuzzles, stringToGrid, parseGameFromUrl, generateShareableUrl, addGameRecord, getDifficultyRecord, getCompletedSections, findCellsWithOnePossibility, idclipCheat } from './utils/sudokuUtils';
+import { generatePuzzle, isGridComplete, isGridValid, loadPuzzleDatabase, enableFlightMode, isFlightModeEnabled, isFlightModeEnabledSync, disableFlightMode, refreshFlightModeCacheIfNeeded, getRandomAnimationPuzzles, parseGameFromUrl, generateShareableUrl, addGameRecord, getDifficultyRecord, getCompletedSections, findCellsWithOnePossibility, idclipCheat } from './utils/sudokuUtils';
 import { playCompletionSound, playMultipleCompletionSound, createCompletionSound, createPerfectGameSound, createHintSound, createDigitCompletionSound } from './utils/audioUtils';
 import { initGA, trackPageView, trackGameStarted, trackGameCompleted, trackGameOver, trackHintUsed, trackFlightModeToggle } from './utils/analytics';
-import { Undo, Add, Refresh, Lightbulb, LightbulbOutlined, Circle, FiberManualRecord, Pause, PlayArrow, Share, Menu, VolumeUp, VolumeOff, Edit, EditOutlined, FlightTakeoff, FlightLand } from '@mui/icons-material';
+import { Undo, Add, Refresh, Lightbulb, Pause, PlayArrow, Share, Menu, VolumeUp, VolumeOff, Edit, EditOutlined, FlightTakeoff, FlightLand } from '@mui/icons-material';
 import { Drawer, List, ListItem, ListItemButton, ListItemIcon, ListItemText, IconButton, Divider, Box, Typography } from '@mui/material';
 import './App.css';
 
@@ -91,15 +91,7 @@ function App() {
   const [selectedNumber, setSelectedNumber] = useState(null);
   const [difficulty, setDifficulty] = useState('medium');
 
-  // Safe setDifficulty wrapper to ensure it's always a valid string
-  const safSetDifficulty = (newDifficulty) => {
-    if (typeof newDifficulty === 'string' && ['easy', 'children', 'medium', 'hard', 'expert'].includes(newDifficulty)) {
-      setDifficulty(newDifficulty);
-    } else {
-      console.warn('Invalid difficulty value:', newDifficulty, 'defaulting to medium');
-      setDifficulty('medium');
-    }
-  };
+
   const [gameStatus, setGameStatus] = useState('playing'); // playing, completed, error
   const [timer, setTimer] = useState(0);
   const [isTimerRunning, setIsTimerRunning] = useState(false);

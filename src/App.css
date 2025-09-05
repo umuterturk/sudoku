@@ -937,6 +937,10 @@
   line-height: 1;
   min-height: 0.8rem;
   text-transform: capitalize;
+  user-select: none;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
 }
 
 .control-button {

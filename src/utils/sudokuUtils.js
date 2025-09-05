@@ -115,17 +115,6 @@ export const loadPuzzleDatabase = async (difficulty) => {
   return await loadingPromise;
 };
 
-// Preload puzzle databases for better performance (optional)
-export const preloadPuzzleDatabase = async (difficulty, onProgress = null) => {
-  try {
-    await loadPuzzleDatabase(difficulty);
-    console.log(`Preloaded ${difficulty} puzzle database`);
-    if (onProgress) onProgress(difficulty, true);
-  } catch (error) {
-    console.warn(`Failed to preload ${difficulty} puzzles:`, error);
-    if (onProgress) onProgress(difficulty, false, error);
-  }
-};
 
 // Preload multiple difficulties with progress tracking
 export const preloadPuzzleDatabases = async (difficulties = ['medium'], onProgress = null) => {
@@ -266,15 +255,6 @@ export const refreshFlightModeCacheIfNeeded = async (onProgress = null) => {
   }
 };
 
-// Get flight mode cache statistics
-export const getFlightModeCacheStats = async () => {
-  try {
-    return await persistentCache.getCacheStats();
-  } catch (error) {
-    console.error('Error getting cache stats:', error);
-    return null;
-  }
-};
 
 // Get random puzzle grids for animation using the unified cache system
 export const getRandomAnimationPuzzles = async (difficulty, count = 20) => {
@@ -321,15 +301,6 @@ export const getRandomAnimationPuzzles = async (difficulty, count = 20) => {
   }
 };
 
-// Get difficulty rating based on clue count
-const getDifficultyRating = (clueCount) => {
-  if (clueCount >= 36) return 'Very Easy';
-  if (clueCount >= 32) return 'Easy';
-  if (clueCount >= 28) return 'Medium';
-  if (clueCount >= 24) return 'Hard';
-  if (clueCount >= 20) return 'Very Hard';
-  return 'Expert';
-};
 
 // Check if a number is valid in a specific position
 export const isValidMove = (grid, row, col, num) => {
@@ -362,40 +333,6 @@ export const isValidMove = (grid, row, col, num) => {
   return true;
 };
 
-// Solve the Sudoku using backtracking
-export const solveSudoku = (grid) => {
-  let iterationCount = 0;
-  let maxDepth = 0;
-  
-  const solve = (grid, depth = 0) => {
-    iterationCount++;
-    maxDepth = Math.max(maxDepth, depth);
-    
-    for (let row = 0; row < 9; row++) {
-      for (let col = 0; col < 9; col++) {
-        if (grid[row][col] === 0) {
-          for (let num = 1; num <= 9; num++) {
-            if (isValidMove(grid, row, col, num)) {
-              grid[row][col] = num;
-              
-              if (solve(grid, depth + 1)) {
-                return true;
-              }
-              
-              grid[row][col] = 0;
-            }
-          }
-          return false;
-        }
-      }
-    }
-    return true;
-  };
-  
-  const result = solve(grid);
-  console.log(`Sudoku solved in ${iterationCount} iterations (max depth: ${maxDepth})`);
-  return result;
-};
 
 // Convert 81-character puzzle string to 9x9 grid
 export const stringToGrid = (puzzleString) => {
@@ -1005,24 +942,3 @@ export const findCellsWithOnePossibility = (grid) => {
   return cellsWithOnePossibility;
 };
 
-// Cache management functions
-export const getCacheStatus = () => {
-  return {
-    size: puzzleCache.size,
-    keys: Array.from(puzzleCache.keys()),
-    loadingCount: loadingPromises.size,
-    maxSize: MAX_CACHE_SIZE
-  };
-};
-
-export const clearCache = () => {
-  puzzleCache.clear();
-  loadingPromises.clear();
-  console.log('Puzzle cache cleared');
-};
-
-export const clearCacheForDifficulty = (difficulty) => {
-  puzzleCache.delete(difficulty);
-  loadingPromises.delete(difficulty);
-  console.log(`Cache cleared for ${difficulty}`);
-};

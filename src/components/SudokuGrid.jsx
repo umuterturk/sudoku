@@ -13,8 +13,7 @@ const SudokuGrid = ({
   notes,
   isNotesMode,
   highlightedCells = [],
-  errorCells = [],
-  solution
+  errorCells = []
 }) => {
   const isOriginalCell = (row, col) => {
     if (isAnimating) return false; // During animation, no cells are "original"
