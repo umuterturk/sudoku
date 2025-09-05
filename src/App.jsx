@@ -62,6 +62,7 @@ function App() {
   const [longPressTimer, setLongPressTimer] = useState(null);
   const [isLongPressTriggered, setIsLongPressTriggered] = useState(false);
   const [errorCells, setErrorCells] = useState([]);
+  const [undosUsed, setUndosUsed] = useState(0);
   
   // Auto-hint system for easy and children modes
   const [lastMoveTime, setLastMoveTime] = useState(Date.now());
@@ -274,7 +275,8 @@ function App() {
         isNotesMode: gameState.isNotesMode,
         notes: gameState.notes,
         isPaused: gameState.isPaused,
-        errorCells: gameState.errorCells
+        errorCells: gameState.errorCells,
+        undosUsed: gameState.undosUsed
       };
       
       // Debug: Check each property for circular references
@@ -360,6 +362,7 @@ function App() {
         setIsNotesMode(urlGameState.isNotesMode || false);
         setNotes(urlGameState.notes || Array(9).fill().map(() => Array(9).fill().map(() => [])));
         setErrorCells(urlGameState.errorCells || []);
+        setUndosUsed(urlGameState.undosUsed || 0);
         setIsPaused(urlGameState.isPaused);
         setIsTimerRunning(!urlGameState.isPaused && urlGameState.gameStatus === 'playing');
         
@@ -391,6 +394,7 @@ function App() {
         setIsNotesMode(savedState.isNotesMode || false);
         setNotes(savedState.notes || Array(9).fill().map(() => Array(9).fill().map(() => [])));
         setErrorCells(savedState.errorCells || []);
+        setUndosUsed(savedState.undosUsed || 0);
         setIsPaused(true); // Start paused when showing continue popup
         
         // Handle timer restoration - use saved timer value directly (incremental only)
@@ -459,11 +463,12 @@ function App() {
         isNotesMode,
         notes,
         isPaused,
-        errorCells
+        errorCells,
+        undosUsed
       };
       saveGameState(gameState);
     }
-  }, [grid, originalGrid, solution, selectedCell, selectedNumber, difficulty, gameStatus, timer, moveHistory, lives, hintLevel, isNotesMode, notes, isPaused, errorCells]);
+  }, [grid, originalGrid, solution, selectedCell, selectedNumber, difficulty, gameStatus, timer, moveHistory, lives, hintLevel, isNotesMode, notes, isPaused, errorCells, undosUsed]);
 
   // Timer effect
   useEffect(() => {
@@ -501,6 +506,7 @@ function App() {
     setNotes(Array(9).fill().map(() => Array(9).fill().map(() => [])));
     setIsPaused(false);
     setErrorCells([]);
+    setUndosUsed(0);
     
     // Reset auto-hint system for new game
     setLastMoveTime(Date.now());
@@ -813,6 +819,7 @@ function App() {
     setNotes(Array(9).fill().map(() => Array(9).fill().map(() => [])));
     setIsPaused(false);
     setErrorCells([]);
+    setUndosUsed(0);
     setGlowingCompletions({
       rows: [],
       columns: [],
@@ -828,7 +835,7 @@ function App() {
   };
 
   const handleUndo = () => {
-    if (moveHistory.length === 0) return;
+    if (moveHistory.length === 0 || undosUsed >= 3) return;
     
     const lastMove = moveHistory[moveHistory.length - 1];
     const newGrid = grid.map(r => [...r]);
@@ -836,6 +843,7 @@ function App() {
     
     setGrid(newGrid);
     setMoveHistory(prev => prev.slice(0, -1));
+    setUndosUsed(prev => prev + 1);
     
     // Update error cells based on the undone move
     const { row, col } = lastMove;
@@ -1106,7 +1114,8 @@ function App() {
       selectedCell,
       selectedNumber,
       isPaused,
-      errorCells
+      errorCells,
+      undosUsed
     };
 
     const shareableUrl = generateShareableUrl(gameState);
@@ -1296,12 +1305,14 @@ function App() {
                 <button 
                   className="control-button"
                   onClick={handleUndo}
-                  disabled={moveHistory.length === 0 || isAnimating}
-                  title="Undo"
+                  disabled={moveHistory.length === 0 || isAnimating || undosUsed >= 3}
+                  title={undosUsed >= 3 ? `Undo (${undosUsed}/3 used)` : "Undo"}
                 >
                   <Undo />
                 </button>
-                <span className="control-label">Undo</span>
+                <span className="control-label">
+                  Undo {undosUsed >= 3 ? `(${undosUsed}/3)` : ''}
+                </span>
               </div>
               
               <div className="control-button-group">
