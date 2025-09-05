@@ -845,8 +845,7 @@ export const decodeGameState = (base64String) => {
       gameStatus: 'playing',
       selectedCell: null,
       selectedNumber: null,
-      isPaused: false,
-      lastSaveTime: Date.now()
+      isPaused: false
     };
     
     return gameState;

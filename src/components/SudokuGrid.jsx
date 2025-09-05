@@ -12,7 +12,9 @@ const SudokuGrid = ({
   shakingCompletions,
   notes,
   isNotesMode,
-  highlightedCells = []
+  highlightedCells = [],
+  errorCells = [],
+  solution
 }) => {
   const isOriginalCell = (row, col) => {
     if (isAnimating) return false; // During animation, no cells are "original"
@@ -120,6 +122,12 @@ const SudokuGrid = ({
     if (grid[row][col] === 0) return false;
     
     const num = grid[row][col];
+    
+    // Check if this cell is in the error list (wrong solution)
+    const isInErrorList = errorCells.some(cell => cell.row === row && cell.col === col);
+    if (isInErrorList) return true;
+    
+    // Also check for Sudoku rule violations (duplicate numbers)
     const tempGrid = grid.map(r => [...r]);
     tempGrid[row][col] = 0; // Temporarily remove to check validity
     

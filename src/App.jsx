@@ -61,6 +61,7 @@ function App() {
   const [highlightedCells, setHighlightedCells] = useState([]);
   const [longPressTimer, setLongPressTimer] = useState(null);
   const [isLongPressTriggered, setIsLongPressTriggered] = useState(false);
+  const [errorCells, setErrorCells] = useState([]);
   
   // Auto-hint system for easy and children modes
   const [lastMoveTime, setLastMoveTime] = useState(Date.now());
@@ -273,7 +274,7 @@ function App() {
         isNotesMode: gameState.isNotesMode,
         notes: gameState.notes,
         isPaused: gameState.isPaused,
-        lastSaveTime: gameState.lastSaveTime
+        errorCells: gameState.errorCells
       };
       
       // Debug: Check each property for circular references
@@ -358,6 +359,7 @@ function App() {
         setHintLevel(urlGameState.hintLevel);
         setIsNotesMode(urlGameState.isNotesMode || false);
         setNotes(urlGameState.notes || Array(9).fill().map(() => Array(9).fill().map(() => [])));
+        setErrorCells(urlGameState.errorCells || []);
         setIsPaused(urlGameState.isPaused);
         setIsTimerRunning(!urlGameState.isPaused && urlGameState.gameStatus === 'playing');
         
@@ -388,13 +390,11 @@ function App() {
         setHintLevel(savedState.hintLevel || 'medium');
         setIsNotesMode(savedState.isNotesMode || false);
         setNotes(savedState.notes || Array(9).fill().map(() => Array(9).fill().map(() => [])));
+        setErrorCells(savedState.errorCells || []);
         setIsPaused(true); // Start paused when showing continue popup
         
-        // Handle timer restoration
-        const currentTime = Date.now();
-        const elapsedTime = Math.floor((currentTime - savedState.lastSaveTime) / 1000);
-        const restoredTimer = savedState.timer + (savedState.gameStatus === 'playing' ? elapsedTime : 0);
-        setTimer(restoredTimer);
+        // Handle timer restoration - use saved timer value directly (incremental only)
+        setTimer(savedState.timer || 0);
         setIsTimerRunning(false); // Don't start timer until they continue
       } else {
         // No saved game, show difficulty popup
@@ -459,11 +459,11 @@ function App() {
         isNotesMode,
         notes,
         isPaused,
-        lastSaveTime: Date.now()
+        errorCells
       };
       saveGameState(gameState);
     }
-  }, [grid, originalGrid, solution, selectedCell, selectedNumber, difficulty, gameStatus, timer, moveHistory, lives, hintLevel, isNotesMode, notes, isPaused]);
+  }, [grid, originalGrid, solution, selectedCell, selectedNumber, difficulty, gameStatus, timer, moveHistory, lives, hintLevel, isNotesMode, notes, isPaused, errorCells]);
 
   // Timer effect
   useEffect(() => {
@@ -472,11 +472,13 @@ function App() {
       interval = setInterval(() => {
         setTimer(timer => timer + 1);
       }, 1000);
-    } else if (!isTimerRunning && timer !== 0) {
-      clearInterval(interval);
     }
-    return () => clearInterval(interval);
-  }, [isTimerRunning, isPaused, timer]);
+    return () => {
+      if (interval) {
+        clearInterval(interval);
+      }
+    };
+  }, [isTimerRunning, isPaused]);
 
   // Animation puzzles now handled by unified cache system in sudokuUtils
 
@@ -498,6 +500,7 @@ function App() {
     setIsNotesMode(false);
     setNotes(Array(9).fill().map(() => Array(9).fill().map(() => [])));
     setIsPaused(false);
+    setErrorCells([]);
     
     // Reset auto-hint system for new game
     setLastMoveTime(Date.now());
@@ -656,8 +659,9 @@ function App() {
       // Automatically set selectedNumber to show hints for the entered number
       setSelectedNumber(digit);
     } else {
-      // If clearing the cell (digit is 0), clear the selected number
+      // If clearing the cell (digit is 0), clear the selected number and remove from error list
       setSelectedNumber(null);
+      setErrorCells(prev => prev.filter(cell => !(cell.row === row && cell.col === col)));
     }
 
     // Check if the move is wrong (not the correct solution for this cell)
@@ -665,6 +669,15 @@ function App() {
       // Trigger shake animation
       setIsShaking(true);
       setTimeout(() => setIsShaking(false), 600); // Match animation duration
+      
+      // Add cell to error list
+      setErrorCells(prev => {
+        const cellKey = `${row}-${col}`;
+        if (!prev.some(cell => cell.key === cellKey)) {
+          return [...prev, { row, col, key: cellKey }];
+        }
+        return prev;
+      });
       
       setLives(prev => {
         const newLives = prev - 1;
@@ -677,6 +690,8 @@ function App() {
         return newLives;
       });
     } else if (digit !== 0) {
+      // Remove cell from error list if it was corrected
+      setErrorCells(prev => prev.filter(cell => !(cell.row === row && cell.col === col)));
       // Check for completed sections (only if it's a correct move)
       const completedSections = getCompletedSections(oldGrid, newGrid, row, col);
       
@@ -797,6 +812,7 @@ function App() {
     setIsNotesMode(false);
     setNotes(Array(9).fill().map(() => Array(9).fill().map(() => [])));
     setIsPaused(false);
+    setErrorCells([]);
     setGlowingCompletions({
       rows: [],
       columns: [],
@@ -820,6 +836,27 @@ function App() {
     
     setGrid(newGrid);
     setMoveHistory(prev => prev.slice(0, -1));
+    
+    // Update error cells based on the undone move
+    const { row, col } = lastMove;
+    const restoredValue = lastMove.previousValue;
+    
+    if (restoredValue === 0) {
+      // If we're restoring to an empty cell, remove it from error list
+      setErrorCells(prev => prev.filter(cell => !(cell.row === row && cell.col === col)));
+    } else if (solution && restoredValue !== solution[row][col]) {
+      // If we're restoring a wrong value, add it back to error list
+      setErrorCells(prev => {
+        const cellKey = `${row}-${col}`;
+        if (!prev.some(cell => cell.key === cellKey)) {
+          return [...prev, { row, col, key: cellKey }];
+        }
+        return prev;
+      });
+    } else {
+      // If we're restoring a correct value, remove it from error list
+      setErrorCells(prev => prev.filter(cell => !(cell.row === row && cell.col === col)));
+    }
     
     // Update game status if needed
     if (gameStatus === 'completed' || gameStatus === 'error') {
@@ -1069,7 +1106,7 @@ function App() {
       selectedCell,
       selectedNumber,
       isPaused,
-      lastSaveTime: Date.now()
+      errorCells
     };
 
     const shareableUrl = generateShareableUrl(gameState);
@@ -1221,6 +1258,8 @@ function App() {
               notes={notes}
               isNotesMode={isNotesMode}
               highlightedCells={highlightedCells}
+              errorCells={errorCells}
+              solution={solution}
             />
 
             <DigitButtons
