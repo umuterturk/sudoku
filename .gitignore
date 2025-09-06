@@ -86,3 +86,8 @@ jspm_packages/
 
 # DynamoDB Local files
 .dynamodb/
+
+firebase.prod.js
+PRODUCTION_SECURITY_CHECKLIST.md
+GITHUB_PAGES_ENV_SETUP.md
+FIREBASE_SETUP.md
