@@ -1,5 +1,7 @@
 
-const DifficultyPopup = ({ isOpen, onClose, onSelectDifficulty, currentDifficulty, canClose = true }) => {
+import React from 'react';
+
+const DifficultyPopup = ({ isOpen, onClose, onSelectDifficulty, currentDifficulty, canClose = true, onChallengeFriend }) => {
   if (!isOpen) return null;
 
   const difficulties = [
@@ -36,6 +38,19 @@ const DifficultyPopup = ({ isOpen, onClose, onSelectDifficulty, currentDifficult
             <button className="popup-close" onClick={handleCloseClick}>×</button>
           )}
         </div>
+        
+        {/* Challenge Friend Button */}
+        {onChallengeFriend && (
+          <div className="challenge-friend-section">
+            <button
+              className="challenge-friend-button"
+              onClick={onChallengeFriend}
+            >
+              <div className="challenge-friend-label">🎮 Challenge Friend</div>
+              <div className="challenge-friend-description">Play against a friend in real-time</div>
+            </button>
+          </div>
+        )}
         
         <div className="difficulty-options">
           {difficulties.map((diff) => (

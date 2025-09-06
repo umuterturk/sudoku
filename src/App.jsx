@@ -1,4 +1,4 @@
-import React, { useState, useEffect, Suspense, Component } from 'react';
+import React, { useState, useEffect, Suspense, Component, useRef } from 'react';
 import SudokuGrid from './components/SudokuGrid';
 import DigitButtons from './components/DigitButtons';
 import Hearts from './components/Hearts';
@@ -12,8 +12,34 @@ const CompletionPopup = React.lazy(() => import('./components/CompletionPopup'))
 import { generatePuzzle, isGridComplete, isGridValid, loadPuzzleDatabase, enableFlightMode, isFlightModeEnabled, isFlightModeEnabledSync, disableFlightMode, refreshFlightModeCacheIfNeeded, getRandomAnimationPuzzles, parseGameFromUrl, generateShareableUrl, addGameRecord, getDifficultyRecord, getCompletedSections, findCellsWithOnePossibility, idclipCheat } from './utils/sudokuUtils';
 import { playCompletionSound, playMultipleCompletionSound, createCompletionSound, createPerfectGameSound, createHintSound, createDigitCompletionSound } from './utils/audioUtils';
 import { initGA, trackPageView, trackGameStarted, trackGameCompleted, trackGameOver, trackHintUsed, trackFlightModeToggle } from './utils/analytics';
-import { Undo, Add, Refresh, Lightbulb, Pause, PlayArrow, Share, Menu, VolumeUp, VolumeOff, Edit, EditOutlined, FlightTakeoff, FlightLand } from '@mui/icons-material';
-import { Drawer, List, ListItem, ListItemButton, ListItemIcon, ListItemText, IconButton, Divider, Box, Typography } from '@mui/material';
+import { 
+  createGameRoom, 
+  joinGameRoom, 
+  startGame, 
+  updatePlayerProgress, 
+  updatePlayerHearts,
+  updateGameState,
+  updatePlayerDigit,
+  subscribeToRoom, 
+  calculateProgress,
+  generateInviteLink,
+  parseRoomFromUrl,
+  clearPlayerData,
+  checkAndHandleGameEnd,
+  endGameWithWinner,
+  endGameByTimer,
+  GAME_STATES,
+  CONNECTION_STATES
+} from './utils/multiplayerUtils';
+import { 
+  PlayerProgressBars, 
+  CountdownDisplay, 
+  GameStateIndicator, 
+  WaitingRoom,
+  MultiplayerGameResult
+} from './components/MultiplayerUI';
+import { Undo, Add, Refresh, Lightbulb, Pause, PlayArrow, Share, Menu, VolumeUp, VolumeOff, Edit, EditOutlined, FlightTakeoff, FlightLand, People } from '@mui/icons-material';
+import { Drawer, List, ListItem, ListItemButton, ListItemIcon, ListItemText, IconButton, Divider, Box, Typography, Button } from '@mui/material';
 import './App.css';
 
 // Error Boundary Component
@@ -97,11 +123,13 @@ function App() {
   const [isTimerRunning, setIsTimerRunning] = useState(false);
   const [moveHistory, setMoveHistory] = useState([]);
   const [showDifficultyPopup, setShowDifficultyPopup] = useState(false);
+  const [isInitializingMultiplayer, setIsInitializingMultiplayer] = useState(false);
   const [showResetPopup, setShowResetPopup] = useState(false);
   const [showContinuePopup, setShowContinuePopup] = useState(false);
   const [showCompletionPopup, setShowCompletionPopup] = useState(false);
   const [completionData, setCompletionData] = useState(null);
   const [lives, setLives] = useState(3);
+  const [previousLives, setPreviousLives] = useState(3);
   const [isShaking, setIsShaking] = useState(false);
   const [hintLevel, setHintLevel] = useState('medium'); // arcade, hard, medium, novice
   const [isPaused, setIsPaused] = useState(false);
@@ -122,6 +150,28 @@ function App() {
   const [isLongPressTriggered, setIsLongPressTriggered] = useState(false);
   const [errorCells, setErrorCells] = useState([]);
   const [undosUsed, setUndosUsed] = useState(0);
+  
+  // Multiplayer state
+  const [isMultiplayer, setIsMultiplayer] = useState(false);
+  const [multiplayerRoom, setMultiplayerRoom] = useState(null);
+  const [multiplayerPlayers, setMultiplayerPlayers] = useState([]);
+  const [multiplayerGameState, setMultiplayerGameState] = useState(GAME_STATES.WAITING);
+  const [connectionState, setConnectionState] = useState(CONNECTION_STATES.DISCONNECTED);
+  const [currentPlayerId, setCurrentPlayerId] = useState(null);
+  const [showMultiplayerUI, setShowMultiplayerUI] = useState(false);
+  const [multiplayerTimer, setMultiplayerTimer] = useState(600); // 10 minutes
+  const [multiplayerGameStartTime, setMultiplayerGameStartTime] = useState(null);
+  const [isHost, setIsHost] = useState(false);
+  const [multiplayerGameEndData, setMultiplayerGameEndData] = useState(null);
+  
+  // Ref to track current grid for multiplayer subscription
+  const currentGridRef = useRef(grid);
+  
+  // Flag to track when we need to auto-start the game
+  const [shouldAutoStart, setShouldAutoStart] = useState(false);
+  
+  // Ref to prevent duplicate initialization
+  const isInitializedRef = useRef(false);
   
   // Auto-hint system for easy and children modes
   const [lastMoveTime, setLastMoveTime] = useState(Date.now());
@@ -219,6 +269,7 @@ function App() {
   const idkfa = () => {
     console.log('🎮 IDKFA activated! All weapons and ammo... err, lives restored!');
     setLives(3);
+    setPreviousLives(3);
     console.log('❤️ Lives restored to 3');
     
     // Optional: Also restore some other benefits
@@ -318,6 +369,12 @@ function App() {
   // Save game state to localStorage with robust error handling
   const saveGameState = (gameState) => {
     try {
+      // Skip saving in multiplayer mode - players should lose game on refresh
+      if (gameState?.isMultiplayer) {
+        console.log('🚫 Skipping save in multiplayer mode - game will be lost on refresh');
+        return;
+      }
+
       // Validate game state before saving
       if (!gameState || !isValidGameState(gameState)) {
         console.warn('Invalid game state, skipping save');
@@ -343,9 +400,10 @@ function App() {
         errorCells: gameState.errorCells || [],
         undosUsed: gameState.undosUsed || 0
       };
-      
+
       // Test serialization before saving
       const serializedState = JSON.stringify(cleanGameState);
+      console.log(`💾 Saving game state (${Math.round(serializedState.length / 1024)}KB)`);
       
       // Check if serialized data is too large (localStorage has ~5-10MB limit)
       if (serializedState.length > 5 * 1024 * 1024) { // 5MB limit
@@ -381,23 +439,36 @@ function App() {
   // Load game state from localStorage with robust error handling
   const loadGameState = () => {
     try {
+      console.log('📂 Attempting to load saved game state...');
       const savedState = localStorage.getItem('sudoku-game-state');
       if (!savedState) {
+        console.log('📭 No saved game state found');
         return null;
       }
 
+      console.log(`📦 Found saved state (${Math.round(savedState.length / 1024)}KB)`);
       const parsedState = JSON.parse(savedState);
+      
+      // Log multiplayer state if present
+      if (parsedState.isMultiplayer) {
+        console.log('🎮 Found multiplayer state:', {
+          roomId: parsedState.multiplayerRoom?.roomId,
+          playerId: parsedState.currentPlayerId,
+          players: parsedState.multiplayerPlayers?.length
+        });
+      }
       
       // Validate the loaded state has required properties
       if (!isValidGameState(parsedState)) {
-        console.warn('Invalid game state detected, clearing localStorage');
+        console.warn('❌ Invalid game state detected, clearing localStorage');
         localStorage.removeItem('sudoku-game-state');
         return null;
       }
 
+      console.log('✅ Game state loaded successfully');
       return parsedState;
     } catch (error) {
-      console.error('Failed to load game state, clearing corrupted data:', error);
+      console.error('❌ Failed to load game state, clearing corrupted data:', error);
       // Clear corrupted data
       try {
         localStorage.removeItem('sudoku-game-state');
@@ -458,6 +529,29 @@ function App() {
       return false;
     }
 
+    // Validate multiplayer state if present
+    if (state.isMultiplayer) {
+      console.log('🔍 Validating multiplayer state...');
+      if (!state.multiplayerRoom || !state.multiplayerRoom.roomId) {
+        console.warn('Invalid multiplayer room data');
+        return false;
+      }
+      if (!state.currentPlayerId) {
+        console.warn('Missing player ID');
+        return false;
+      }
+      if (!Array.isArray(state.multiplayerPlayers)) {
+        console.warn('Invalid players array');
+        return false;
+      }
+      // Validate that current player exists in players array
+      if (!state.multiplayerPlayers.some(p => p.id === state.currentPlayerId)) {
+        console.warn('Current player not found in players array');
+        return false;
+      }
+      console.log('✅ Multiplayer state validation passed');
+    }
+
     return true;
   };
 
@@ -498,7 +592,7 @@ function App() {
   }, [idkfa, iddqd, idspispopd, idclip]);
 
   // Fallback function to ensure game can always start
-  const initializeFallbackGame = () => {
+  const initializeFallbackGame = (skipDifficultyPopup = false) => {
     console.log('🔄 Initializing fallback game due to data corruption');
     try {
       // Clear any corrupted data
@@ -516,6 +610,7 @@ function App() {
       setIsTimerRunning(false);
       setMoveHistory([]);
       setLives(3);
+      setPreviousLives(3);
       setIsShaking(false);
       setHintLevel('medium');
       setIsPaused(false);
@@ -526,8 +621,17 @@ function App() {
       setUndosUsed(0);
       setGlowingCompletions({ rows: [], columns: [], boxes: [] });
       
-      // Show difficulty popup to start fresh
-      setShowDifficultyPopup(true);
+      // Show difficulty popup to start fresh (unless skipped or in multiplayer)
+      if (!skipDifficultyPopup && !isInitializingMultiplayer && !isMultiplayer) {
+        console.log('🎯 initializeFallbackGame: Showing difficulty popup');
+        setShowDifficultyPopup(true);
+      } else {
+        console.log('🚫 initializeFallbackGame: Skipping difficulty popup', { 
+          skipDifficultyPopup,
+          isInitializingMultiplayer, 
+          isMultiplayer 
+        });
+      }
     } catch (error) {
       console.error('Failed to initialize fallback game:', error);
       // Last resort: reload the page
@@ -537,9 +641,143 @@ function App() {
 
   // Initialize game with comprehensive error handling
   useEffect(() => {
+    // Prevent duplicate initialization in React StrictMode
+    if (isInitializedRef.current) {
+      console.log('🚫 Skipping duplicate initialization');
+      return;
+    }
+    
     const initializeGame = async () => {
       try {
-        // First, check for URL game parameter
+        // Skip this block since we'll check for room parameter later
+        
+        // Check for room parameter first (prioritize multiplayer)
+        const roomId = parseRoomFromUrl();
+        if (roomId) {
+          // Multiplayer mode - room ID found in URL
+          try {
+            console.log('🎮 Found room parameter, attempting to join room:', roomId);
+            
+            // Set flag to prevent difficulty popup during multiplayer initialization
+            setIsInitializingMultiplayer(true);
+            
+            // Hide any existing difficulty popup
+            setShowDifficultyPopup(false);
+            console.log('🚫 Hidden difficulty popup for multiplayer mode');
+            
+            // Clear any existing single-player save data when joining multiplayer
+            localStorage.removeItem('sudoku-game-state');
+            console.log('🗑️ Cleared single-player save data for multiplayer mode');
+            
+            setConnectionState(CONNECTION_STATES.CONNECTING);
+            setIsMultiplayer(true);
+            setShowMultiplayerUI(true);
+            setIsLoading(true);
+            setLoadingMessage('Joining multiplayer game...');
+            
+            // Join the room with retries
+            let retryCount = 0;
+            let roomData;
+            while (retryCount < 3) {
+              try {
+                const result = await joinGameRoom(roomId, 'Player 2');
+                roomData = result.roomData;
+                break;
+              } catch (joinError) {
+                console.warn(`Join attempt ${retryCount + 1} failed:`, joinError);
+                retryCount++;
+                if (retryCount === 3) throw joinError;
+                await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1s before retry
+              }
+            }
+            
+            // Separate room metadata from game content
+            const { gameBoard, solution, ...roomMetadata } = roomData;
+            setMultiplayerRoom(roomMetadata);
+            setMultiplayerPlayers(roomData.players);
+            
+            // Find our player ID (we might not always be player 2)
+            const ourPlayer = roomData.players[roomData.players.length - 1];
+            setCurrentPlayerId(ourPlayer.id);
+            setIsHost(false);
+            setConnectionState(CONNECTION_STATES.CONNECTED);
+            
+            // Set up the game board from room data
+            setGrid(gameBoard);
+            setOriginalGrid(gameBoard);
+            setSolution(solution);
+            setDifficulty(roomData.difficulty);
+            setGameStatus('playing');
+            setTimer(0);
+            setIsTimerRunning(false);
+            setLives(3);
+            setPreviousLives(3);
+            
+            setIsLoading(false);
+            setIsInitializingMultiplayer(false);
+            return; // Skip other initialization
+            
+          } catch (roomError) {
+            console.error('Failed to join multiplayer room:', roomError);
+            setConnectionState(CONNECTION_STATES.DISCONNECTED);
+            
+            // Only clear multiplayer state if it's a permanent error
+            if (roomError.message === 'Room not found' || 
+                roomError.message === 'Room is full' || 
+                roomError.message === 'Game has already started') {
+              setIsMultiplayer(false);
+              setShowMultiplayerUI(false);
+              setIsInitializingMultiplayer(false);
+              
+              // Clear the room parameter only for permanent errors
+              const url = new URL(window.location);
+              url.searchParams.delete('room');
+              window.history.replaceState({}, document.title, url.toString());
+            } else {
+              // For temporary errors (network etc), keep the room parameter
+              // and show an error message
+              setIsLoading(false);
+              setIsInitializingMultiplayer(false);
+              alert('Failed to join game room. Please check your connection and try again.');
+              return; // Don't continue to single player
+            }
+          }
+        } else {
+          // Single player mode - no room ID in URL
+          console.log('🎯 No room parameter found, entering single player mode');
+          
+          // Check if there's an existing multiplayer game and exit it
+          const savedState = loadGameState();
+          if (savedState && savedState.isMultiplayer) {
+            console.log('🚪 Exiting existing multiplayer game due to missing room parameter');
+            
+            // Clear multiplayer-specific localStorage data
+            clearPlayerData();
+            localStorage.removeItem('sudoku-game-state');
+            
+            // Reset all multiplayer state
+            setIsMultiplayer(false);
+            setShowMultiplayerUI(false);
+            setMultiplayerRoom(null);
+            setMultiplayerPlayers([]);
+            setMultiplayerGameState(GAME_STATES.WAITING);
+            setCurrentPlayerId(null);
+            setIsHost(false);
+            setMultiplayerTimer(600);
+            setMultiplayerGameStartTime(null);
+            setConnectionState(CONNECTION_STATES.DISCONNECTED);
+            
+            // Initialize a new single player game since we exited multiplayer
+            console.log('🎯 Initializing new single player game after multiplayer exit');
+            initializeFallbackGame(false); // Show difficulty popup for single player
+            return;
+          } else {
+            setIsMultiplayer(false);
+            setShowMultiplayerUI(false);
+          }
+        }
+
+        // Check for URL game parameter if not joining a room
         const urlGameState = parseGameFromUrl();
         if (urlGameState) {
           try {
@@ -575,44 +813,60 @@ function App() {
           }
         }
         
-        // Check for saved game in localStorage
+        // Check for saved game in localStorage if not joining a room or loading from URL
         const savedState = loadGameState();
         if (savedState) {
           try {
-            // Show continue game popup instead of directly restoring
-            setShowContinuePopup(true);
-            
-            // Restore saved game state (but don't start timer yet)
-            setGrid(savedState.grid);
-            setOriginalGrid(savedState.originalGrid);
-            setSolution(savedState.solution);
-            setSelectedCell(savedState.selectedCell);
-            setSelectedNumber(savedState.selectedNumber);
-            setDifficulty(savedState.difficulty);
-            setGameStatus('playing'); // Always set to playing for continue popup
-            setMoveHistory(savedState.moveHistory || []);
-            setLives(savedState.lives !== undefined ? savedState.lives : 3);
-            setHintLevel(savedState.hintLevel || 'medium');
-            setIsNotesMode(savedState.isNotesMode || false);
-            setNotes(savedState.notes || Array(9).fill().map(() => Array(9).fill().map(() => [])));
-            setErrorCells(savedState.errorCells || []);
-            setUndosUsed(savedState.undosUsed || 0);
-            setIsPaused(true); // Start paused when showing continue popup
-            
-            // Handle timer restoration - use saved timer value directly (incremental only)
-            setTimer(savedState.timer || 0);
-            setIsTimerRunning(false); // Don't start timer until they continue
+            // Only restore single player games - multiplayer games are never saved
+            if (!savedState.isMultiplayer) {
+              // Single player game state
+              console.log('🎲 Restoring single player game state...');
+              setShowContinuePopup(true);
+              
+              // Restore saved game state (but don't start timer yet)
+              setGrid(savedState.grid);
+              setOriginalGrid(savedState.originalGrid);
+              setSolution(savedState.solution);
+              setSelectedCell(savedState.selectedCell);
+              setSelectedNumber(savedState.selectedNumber);
+              setDifficulty(savedState.difficulty);
+              setGameStatus('playing'); // Always set to playing for continue popup
+              setMoveHistory(savedState.moveHistory || []);
+              setLives(savedState.lives !== undefined ? savedState.lives : 3);
+              setHintLevel(savedState.hintLevel || 'medium');
+              setIsNotesMode(savedState.isNotesMode || false);
+              setNotes(savedState.notes || Array(9).fill().map(() => Array(9).fill().map(() => [])));
+              setErrorCells(savedState.errorCells || []);
+              setUndosUsed(savedState.undosUsed || 0);
+              setIsPaused(true); // Start paused when showing continue popup
+              
+              // Handle timer restoration - use saved timer value directly (incremental only)
+              setTimer(savedState.timer || 0);
+              setIsTimerRunning(false); // Don't start timer until they continue
+            } else {
+              // If we somehow have a multiplayer state saved (from old version), clear it
+              console.log('🗑️ Found old multiplayer save data, clearing it...');
+              localStorage.removeItem('sudoku-game-state');
+            }
           } catch (restoreError) {
             console.error('Failed to restore saved game, falling back:', restoreError);
-            initializeFallbackGame();
+            initializeFallbackGame(isInitializingMultiplayer);
           }
         } else {
-          // No saved game, show difficulty popup
-          setShowDifficultyPopup(true);
+          // No saved game, show difficulty popup (unless initializing multiplayer)
+          if (!isInitializingMultiplayer && !isMultiplayer) {
+            console.log('🎯 initializeGame: Showing difficulty popup (no saved game)');
+            setShowDifficultyPopup(true);
+          } else {
+            console.log('🚫 initializeGame: Skipping difficulty popup', { 
+              isInitializingMultiplayer, 
+              isMultiplayer 
+            });
+          }
         }
       } catch (error) {
         console.error('Game initialization failed, using fallback:', error);
-        initializeFallbackGame();
+        initializeFallbackGame(isInitializingMultiplayer);
       }
     };
 
@@ -653,9 +907,190 @@ function App() {
     
     initializeFlightMode();
     console.log('📱 App ready - databases will load on demand');
+    
+    // Mark as initialized to prevent duplicate runs
+    isInitializedRef.current = true;
   }, []);
 
-  // Auto-save game state
+  // Multiplayer room subscription
+  useEffect(() => {
+    if (!isMultiplayer || !multiplayerRoom) return;
+
+    console.log('🔗 Subscribing to multiplayer room updates...');
+    let unsubscribe = null;
+    
+    const setupSubscription = async () => {
+      try {
+        unsubscribe = await subscribeToRoom(multiplayerRoom.roomId, (roomData, error) => {
+          if (error) {
+            console.error('Multiplayer room subscription error:', error);
+            setConnectionState(CONNECTION_STATES.DISCONNECTED);
+            return;
+          }
+
+          if (!roomData) {
+            console.log('Room no longer exists');
+            setConnectionState(CONNECTION_STATES.DISCONNECTED);
+            return;
+          }
+
+          console.log('📡 Room update received:', roomData);
+          
+          // Update derived state (don't update multiplayerRoom to avoid re-subscription)
+          setMultiplayerPlayers(roomData.players);
+          setMultiplayerGameState(roomData.gameState);
+          
+          // Room data no longer contains board data - players sync through progress/hearts only
+          // Board state is maintained locally by each player
+          
+          // Handle game state changes
+          if (roomData.gameState === GAME_STATES.COUNTDOWN) {
+            console.log('⏰ Countdown started!');
+          } else if (roomData.gameState === GAME_STATES.PLAYING) {
+            console.log('🎮 Game started!');
+            setIsTimerRunning(true);
+            
+            // Set game start time for local timer calculation
+            if (roomData.gameStartTime) {
+              let startTime;
+              if (roomData.gameStartTime.seconds) {
+                // Firestore timestamp format
+                startTime = new Date(roomData.gameStartTime.seconds * 1000);
+              } else if (roomData.gameStartTime instanceof Date) {
+                // Already a Date object
+                startTime = roomData.gameStartTime;
+              } else {
+                // String format
+                startTime = new Date(roomData.gameStartTime);
+              }
+              setMultiplayerGameStartTime(startTime);
+              console.log('🕐 Game start time set:', startTime);
+            }
+          } else if (['player_won', 'draw', 'time_up'].includes(roomData.gameState)) {
+            console.log('🏁 Game ended:', roomData.gameState);
+            setIsTimerRunning(false);
+            setMultiplayerGameEndData({
+              gameState: roomData.gameState,
+              winner: roomData.winner,
+              gameEndReason: roomData.gameEndReason,
+              players: roomData.players
+            });
+            
+            // Clear player data and room parameter when game ends
+            clearPlayerData();
+            const url = new URL(window.location);
+            url.searchParams.delete('room');
+            window.history.replaceState({}, document.title, url.toString());
+          }
+          
+          // Set flag to auto-start game when both players join (only if host and game is still waiting)
+          if (isHost && roomData.gameState === GAME_STATES.WAITING && roomData.players.length === 2) {
+            console.log('🚀 Both players joined, setting auto-start flag...');
+            setShouldAutoStart(true);
+          }
+        });
+      } catch (error) {
+        console.error('Failed to set up room subscription:', error);
+        setConnectionState(CONNECTION_STATES.DISCONNECTED);
+      }
+    };
+    
+    setupSubscription();
+
+    return () => {
+      console.log('🔌 Unsubscribing from multiplayer room');
+      if (unsubscribe && typeof unsubscribe === 'function') {
+        unsubscribe();
+      }
+    };
+  }, [isMultiplayer, multiplayerRoom]);
+
+  // Update grid ref whenever grid changes
+  useEffect(() => {
+    currentGridRef.current = grid;
+  }, [grid]);
+
+  // Handle auto-start when both players join
+  useEffect(() => {
+    if (shouldAutoStart && isHost && multiplayerRoom) {
+      console.log('🚀 Auto-starting multiplayer game...');
+      handleStartMultiplayerGame();
+      setShouldAutoStart(false); // Reset the flag
+    }
+  }, [shouldAutoStart, isHost, multiplayerRoom]);
+
+  // Update multiplayer progress when grid changes
+  useEffect(() => {
+    if (!isMultiplayer || !multiplayerRoom || !currentPlayerId || !solution) return;
+
+    const progress = calculateProgress(grid, originalGrid, solution);
+    const isCompleted = isGridComplete(grid) && isGridValid(grid);
+    
+    // Update progress in Firebase (debounced to prevent spam)
+    const timeoutId = setTimeout(() => {
+      updatePlayerProgress(multiplayerRoom.roomId, currentPlayerId, progress, isCompleted)
+        .then(async () => {
+          // Check if this completion wins the game
+          if (isCompleted) {
+            console.log('🏆 Player completed the board - checking for win!');
+            try {
+              // Use current multiplayerPlayers from state, not dependency
+              const currentPlayers = JSON.parse(JSON.stringify(multiplayerPlayers));
+              const updatedPlayers = currentPlayers.map(player => 
+                player.id === currentPlayerId 
+                  ? { ...player, progress, completed: isCompleted }
+                  : player
+              );
+              
+              const gameEndResult = await checkAndHandleGameEnd(multiplayerRoom.roomId, updatedPlayers);
+              if (gameEndResult.ended) {
+                console.log('🎉 Game ended:', gameEndResult);
+              }
+            } catch (error) {
+              console.error('Failed to check game end conditions:', error);
+            }
+          }
+        })
+        .catch(error => console.error('Failed to update progress:', error));
+    }, 100); // 100ms debounce
+
+    return () => clearTimeout(timeoutId);
+      
+  }, [grid, isMultiplayer, multiplayerRoom, currentPlayerId, solution]);
+
+  // Update player hearts in Firebase when lives change
+  useEffect(() => {
+    if (!isMultiplayer || !multiplayerRoom || !currentPlayerId) return;
+
+    // Update hearts in Firebase when lives change (immediate, no debounce for hearts)
+    updatePlayerHearts(multiplayerRoom.roomId, currentPlayerId, lives, previousLives)
+      .then(async () => {
+        // Check if losing all hearts ends the game
+        if (lives <= 0) {
+          console.log('💔 Player lost all hearts - checking for game end!');
+          try {
+            // Use current multiplayerPlayers from state, not dependency
+            const currentPlayers = JSON.parse(JSON.stringify(multiplayerPlayers));
+            const updatedPlayers = currentPlayers.map(player => 
+              player.id === currentPlayerId 
+                ? { ...player, hearts: lives }
+                : player
+            );
+            
+            const gameEndResult = await checkAndHandleGameEnd(multiplayerRoom.roomId, updatedPlayers);
+            if (gameEndResult.ended) {
+              console.log('🎉 Game ended:', gameEndResult);
+            }
+          } catch (error) {
+            console.error('Failed to check game end conditions:', error);
+          }
+        }
+      })
+      .catch(error => console.error('Failed to update player hearts:', error));
+      
+  }, [lives, previousLives, isMultiplayer, multiplayerRoom, currentPlayerId]);
+
+  // Auto-save game state (for both single and multiplayer)
   useEffect(() => {
     if (grid && originalGrid && gameStatus !== 'completed') {
       const gameState = {
@@ -674,14 +1109,25 @@ function App() {
         notes,
         isPaused,
         errorCells,
-        undosUsed
+        undosUsed,
+        // Multiplayer specific state
+        isMultiplayer,
+        multiplayerRoom,
+        multiplayerPlayers,
+        multiplayerGameState,
+        currentPlayerId,
+        isHost,
+        multiplayerTimer,
+        multiplayerGameStartTime
       };
       saveGameState(gameState);
     }
-  }, [grid, originalGrid, solution, selectedCell, selectedNumber, difficulty, gameStatus, timer, moveHistory, lives, hintLevel, isNotesMode, notes, isPaused, errorCells, undosUsed]);
+  }, [grid, originalGrid, solution, selectedCell, selectedNumber, difficulty, gameStatus, timer, moveHistory, lives, hintLevel, isNotesMode, notes, isPaused, errorCells, undosUsed, isMultiplayer, multiplayerRoom, multiplayerPlayers, multiplayerGameState, currentPlayerId, isHost, multiplayerTimer, multiplayerGameStartTime]);
 
-  // Timer effect
+  // Timer effect for single player
   useEffect(() => {
+    if (isMultiplayer) return; // Skip for multiplayer
+    
     let interval = null;
     if (isTimerRunning && !isPaused) {
       interval = setInterval(() => {
@@ -693,7 +1139,28 @@ function App() {
         clearInterval(interval);
       }
     };
-  }, [isTimerRunning, isPaused]);
+  }, [isTimerRunning, isPaused, isMultiplayer]);
+
+  // Multiplayer timer effect - calculates time based on game start time
+  useEffect(() => {
+    if (!isMultiplayer || !multiplayerGameStartTime || !isTimerRunning) return;
+
+    const interval = setInterval(() => {
+      const now = new Date();
+      const elapsed = Math.floor((now - multiplayerGameStartTime) / 1000);
+      const remaining = Math.max(0, 600 - elapsed); // 10 minutes = 600 seconds
+      
+      setMultiplayerTimer(remaining);
+      
+      // If timer reaches 0, the server should handle game end
+      if (remaining <= 0) {
+        setIsTimerRunning(false);
+        console.log('⏰ Local timer reached 0 - waiting for server to end game');
+      }
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [isMultiplayer, multiplayerGameStartTime, isTimerRunning]);
 
   // Animation puzzles now handled by unified cache system in sudokuUtils
 
@@ -709,6 +1176,7 @@ function App() {
     setIsTimerRunning(false); // Don't start timer during animation
     setMoveHistory([]);
     setLives(3);
+    setPreviousLives(3);
     setIsShaking(false);
     setDifficulty(selectedDifficulty);
     setHintLevel('medium');
@@ -832,7 +1300,7 @@ function App() {
     resetGame();
   };
 
-  const handleDigitSelect = (digit) => {
+  const handleDigitSelect = async (digit) => {
     try {
       if (!selectedCell) return;
       
@@ -877,6 +1345,17 @@ function App() {
     newGrid[row][col] = digit;
     setGrid(newGrid);
     
+    // Update multiplayer if in multiplayer mode
+    if (isMultiplayer && multiplayerRoom && currentPlayerId) {
+      try {
+        const isCorrect = digit === 0 || (solution && digit === solution[row][col]);
+        await updatePlayerDigit(multiplayerRoom.roomId, currentPlayerId, row, col, digit, isCorrect);
+      } catch (error) {
+        console.warn('Failed to update multiplayer digit:', error);
+        // Continue with local game - don't block the user
+      }
+    }
+    
     // Clear notes for this cell when placing a digit
     if (digit !== 0) {
       const newNotes = notes.map(r => r.map(c => [...c]));
@@ -908,6 +1387,7 @@ function App() {
       
       setLives(prev => {
         const newLives = prev - 1;
+        setPreviousLives(prev); // Track previous value for multiplayer
         if (newLives < 0) {
           setGameStatus('game-over');
           setIsTimerRunning(false);
@@ -1063,6 +1543,7 @@ function App() {
       setIsTimerRunning(true);
       setMoveHistory([]);
       setLives(3);
+      setPreviousLives(3);
       setIsShaking(false);
       setIsNotesMode(false);
       setNotes(Array(9).fill().map(() => Array(9).fill().map(() => [])));
@@ -1140,6 +1621,11 @@ function App() {
   };
 
   const handleHintClick = (event) => {
+    // Disable hints in multiplayer mode
+    if (isMultiplayer) {
+      return;
+    }
+
     console.log('🔄 Hint click event triggered, isLongPressTriggered:', isLongPressTriggered);
     
     // Don't change hint level if this was a long press
@@ -1167,6 +1653,11 @@ function App() {
   };
 
   const handleHintLongPress = () => {
+    // Disable hints in multiplayer mode
+    if (isMultiplayer) {
+      return;
+    }
+
     console.log('🔍 Hint long press triggered!');
     
     // Set flag to prevent click event from changing hint level
@@ -1466,6 +1957,122 @@ function App() {
     }
   };
 
+  // Multiplayer functions
+  const handleChallengeFriend = async () => {
+    try {
+      console.log('🎮 Creating multiplayer challenge room...');
+      console.log('🔍 Current state before creation:', { 
+        isMultiplayer, 
+        isInitializingMultiplayer, 
+        showDifficultyPopup 
+      });
+      
+      // Set flag to prevent difficulty popup during multiplayer initialization
+      setIsInitializingMultiplayer(true);
+      console.log('🚫 Set isInitializingMultiplayer to true');
+      
+      // Hide any existing difficulty popup
+      setShowDifficultyPopup(false);
+      console.log('🚫 Hidden difficulty popup for multiplayer mode');
+      
+      // Clear any existing single-player save data when creating multiplayer room
+      localStorage.removeItem('sudoku-game-state');
+      console.log('🗑️ Cleared single-player save data for multiplayer mode');
+      
+      setConnectionState(CONNECTION_STATES.CONNECTING);
+      setIsLoading(true);
+      setLoadingMessage('Creating challenge room...');
+      
+      const { roomId, roomData } = await createGameRoom('Player 1');
+      
+      // Separate room metadata from game content
+      const { gameBoard, solution, ...roomMetadata } = roomData;
+      setMultiplayerRoom(roomMetadata);
+      setMultiplayerPlayers(roomData.players);
+      setCurrentPlayerId(roomData.players[0].id); // First player is host
+      setIsHost(true);
+      setIsMultiplayer(true);
+      setShowMultiplayerUI(true);
+      setConnectionState(CONNECTION_STATES.CONNECTED);
+      
+      // Set up the game board
+      setGrid(gameBoard);
+      setOriginalGrid(gameBoard);
+      setSolution(solution);
+      setDifficulty(roomData.difficulty);
+      setGameStatus('playing');
+      setTimer(0);
+      setIsTimerRunning(false);
+      setLives(3);
+      setPreviousLives(3);
+      
+      // Add room parameter to URL for room creator
+      const url = new URL(window.location);
+      url.searchParams.set('room', roomId);
+      window.history.replaceState({}, document.title, url.toString());
+      
+      setIsLoading(false);
+      setIsInitializingMultiplayer(false);
+      console.log('✅ Challenge room created:', roomId);
+      
+    } catch (error) {
+      console.error('Failed to create challenge room:', error);
+      setConnectionState(CONNECTION_STATES.DISCONNECTED);
+      setIsLoading(false);
+      setIsInitializingMultiplayer(false);
+    }
+  };
+
+  const handleStartMultiplayerGame = async () => {
+    try {
+      if (!multiplayerRoom || !isHost) return;
+      
+      console.log('🚀 Starting multiplayer game...');
+      await startGame(multiplayerRoom.roomId);
+      
+    } catch (error) {
+      console.error('Failed to start multiplayer game:', error);
+    }
+  };
+
+  const handleMultiplayerCountdownComplete = () => {
+    console.log('⏰ Countdown complete, game starting!');
+    setMultiplayerGameState(GAME_STATES.PLAYING);
+    setIsTimerRunning(true);
+  };
+
+  const handleExitMultiplayer = () => {
+    console.log('🚪 Exiting multiplayer mode...');
+    setIsMultiplayer(false);
+    setShowMultiplayerUI(false);
+    setMultiplayerRoom(null);
+    setMultiplayerPlayers([]);
+    setCurrentPlayerId(null);
+    setIsHost(false);
+    setConnectionState(CONNECTION_STATES.DISCONNECTED);
+    setMultiplayerGameState(GAME_STATES.WAITING);
+    setMultiplayerGameEndData(null);
+    setMultiplayerTimer(600);
+    setMultiplayerGameStartTime(null);
+    
+    // Clear player data from localStorage
+    clearPlayerData();
+    
+    // Clear the room parameter from URL when explicitly exiting
+    const url = new URL(window.location);
+    url.searchParams.delete('room');
+    window.history.replaceState({}, document.title, url.toString());
+    
+    // Reset to normal game state
+    setShowDifficultyPopup(true);
+  };
+
+  const handleMultiplayerNewGame = () => {
+    console.log('🎮 Starting new multiplayer game...');
+    setMultiplayerGameEndData(null);
+    handleChallengeFriend();
+  };
+
   const formatTime = (seconds) => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
@@ -1486,8 +2093,13 @@ function App() {
 
   return (
     <>
-      <div className={`app ${gameStatus === 'game-over' ? 'app-game-over-blurred' : ''} ${showContinuePopup || showCompletionPopup ? 'app-blurred' : ''}`}>
-        <header className="app-header">
+      <div className={`app 
+        ${gameStatus === 'game-over' ? 'app-game-over-blurred' : ''} 
+        ${showContinuePopup || showCompletionPopup ? 'app-blurred' : ''} 
+        ${isMultiplayer && multiplayerGameState === GAME_STATES.COUNTDOWN ? 'countdown-active' : ''}
+        ${isMultiplayer && multiplayerGameState === GAME_STATES.WAITING ? 'waiting-active' : ''}
+      `}>
+        <header className={`app-header ${isMultiplayer ? 'multiplayer' : ''}`}>
           <div className="header-left">
             <IconButton
               onClick={() => setIsDrawerOpen(true)}
@@ -1499,28 +2111,71 @@ function App() {
             >
               <Menu />
             </IconButton>
-            <div className="difficulty-display">
-              <span className="difficulty-value">
-                {formatDifficulty(difficulty)}
-              </span>
-            </div>
+            {/* Hide difficulty in multiplayer mode */}
+            {!isMultiplayer && (
+              <div className="difficulty-display">
+                <span className="difficulty-value">
+                  {formatDifficulty(difficulty)}
+                </span>
+              </div>
+            )}
           </div>
-          <div className="timer-container">
-            <div className="timer">{formatTime(timer)}</div>
-            <button 
-              className="pause-button"
-              onClick={handlePauseToggle}
-              disabled={gameStatus !== 'playing' || isAnimating}
-              title={isPaused ? 'Resume' : 'Pause'}
-            >
-              {isPaused ? <PlayArrow /> : <Pause />}
-            </button>
+          
+          {/* Combined Timer and Progress Section */}
+          <div className="timer-progress-section">
+            <div className="timer-container">
+              <div className="timer">
+                {isMultiplayer && multiplayerGameState === GAME_STATES.PLAYING 
+                  ? formatTime(multiplayerTimer) 
+                  : formatTime(timer)
+                }
+              </div>
+              {!isMultiplayer && (
+                <button 
+                  className="pause-button"
+                  onClick={handlePauseToggle}
+                  disabled={gameStatus !== 'playing' || isAnimating}
+                  title={isPaused ? 'Resume' : 'Pause'}
+                >
+                  {isPaused ? <PlayArrow /> : <Pause />}
+                </button>
+              )}
+            </div>
+            
+            {/* Multiplayer Progress Bars */}
+            {isMultiplayer && showMultiplayerUI && multiplayerGameState === GAME_STATES.PLAYING && (
+              <div className="header-multiplayer-section">
+                <PlayerProgressBars 
+                  players={multiplayerPlayers} 
+                  currentPlayerId={currentPlayerId}
+                  roomData={multiplayerRoom}
+                />
+              </div>
+            )}
           </div>
           <Hearts lives={lives} isShaking={isShaking} />
         </header>
 
         <main className="game-container">
-          <div className={`game-content ${isPaused ? 'game-blurred' : ''}`}>
+          {/* Multiplayer Game State Indicator (only when not playing) */}
+          {isMultiplayer && showMultiplayerUI && multiplayerGameState !== GAME_STATES.PLAYING && (
+            <div className="multiplayer-ui">
+              <GameStateIndicator 
+                gameState={multiplayerGameState}
+                connectionState={connectionState}
+                timer={multiplayerTimer}
+              />
+            </div>
+          )}
+
+          <div className={`game-content ${
+            isPaused || 
+            (isMultiplayer && (
+              multiplayerGameState === GAME_STATES.COUNTDOWN || 
+              multiplayerGameState === GAME_STATES.WAITING
+            )) 
+            ? 'game-blurred' : ''
+          }`}>
             <SudokuGrid
               grid={isAnimating && animationGrid ? animationGrid : grid}
               originalGrid={originalGrid}
@@ -1581,25 +2236,27 @@ function App() {
                 </span>
               </div>
               
-              <div className="control-button-group">
-                <button 
-                  className={getHintButtonClass()}
-                  onClick={handleHintClick}
-                  onMouseDown={handleHintMouseDown}
-                  onMouseUp={handleHintMouseUp}
-                  onMouseLeave={handleHintMouseLeave}
-                  onTouchStart={handleHintMouseDown}
-                  onTouchEnd={handleHintMouseUp}
-                  onTouchCancel={handleHintMouseUp}
-                  disabled={isAnimating}
-                  title={`Hint Level: ${hintLevel.charAt(0).toUpperCase() + hintLevel.slice(1)} (Long press to show cells with one possibility)`}
-                >
-                  {getHintIcon()}
-                </button>
-                <span className="control-label">
-                  {hintLevel.charAt(0).toUpperCase() + hintLevel.slice(1)}
-                </span>
-              </div>
+              {!isMultiplayer && (
+                <div className="control-button-group">
+                  <button 
+                    className={getHintButtonClass()}
+                    onClick={handleHintClick}
+                    onMouseDown={handleHintMouseDown}
+                    onMouseUp={handleHintMouseUp}
+                    onMouseLeave={handleHintMouseLeave}
+                    onTouchStart={handleHintMouseDown}
+                    onTouchEnd={handleHintMouseUp}
+                    onTouchCancel={handleHintMouseUp}
+                    disabled={isAnimating}
+                    title={`Hint Level: ${hintLevel.charAt(0).toUpperCase() + hintLevel.slice(1)} (Long press to show cells with one possibility)`}
+                  >
+                    {getHintIcon()}
+                  </button>
+                  <span className="control-label">
+                    {hintLevel.charAt(0).toUpperCase() + hintLevel.slice(1)}
+                  </span>
+                </div>
+              )}
               
               <div className="control-button-group">
                 <button 
@@ -1726,6 +2383,24 @@ function App() {
             </ListItemButton>
           </ListItem>
 
+          <ListItem disablePadding>
+            <ListItemButton
+              onClick={() => {
+                handleChallengeFriend();
+                setIsDrawerOpen(false);
+              }}
+              disabled={isAnimating || isMultiplayer}
+            >
+              <ListItemIcon>
+                <People sx={{ color: '#e53e3e' }} />
+              </ListItemIcon>
+              <ListItemText 
+                primary="Challenge Friend" 
+                primaryTypographyProps={{ fontWeight: 500 }}
+              />
+            </ListItemButton>
+          </ListItem>
+
           <Divider sx={{ my: 1 }} />
 
           <ListItem disablePadding>
@@ -1835,6 +2510,7 @@ function App() {
           onSelectDifficulty={handleDifficultySelect}
           currentDifficulty={difficulty}
           canClose={!!(grid && originalGrid)} // Only allow closing if there's an existing game
+          onChallengeFriend={handleChallengeFriend}
         />
       </Suspense>
 
@@ -1855,6 +2531,47 @@ function App() {
             averageTime={completionData.averageTime}
           />
         </Suspense>
+      )}
+
+      {/* Multiplayer Waiting Room - Outside app container to avoid blur */}
+      {isMultiplayer && showMultiplayerUI && multiplayerGameState === GAME_STATES.WAITING && (
+        <div className="multiplayer-overlay">
+          <WaitingRoom
+            roomId={multiplayerRoom?.roomId}
+            players={multiplayerPlayers}
+            onStartGame={handleStartMultiplayerGame}
+            isHost={isHost}
+          />
+          <Button
+            variant="outlined"
+            onClick={handleExitMultiplayer}
+            className="exit-multiplayer-button"
+            sx={{ mt: 2 }}
+          >
+            Exit Multiplayer
+          </Button>
+        </div>
+      )}
+
+      {/* Multiplayer Countdown - Outside app container to avoid blur */}
+      {isMultiplayer && multiplayerGameState === GAME_STATES.COUNTDOWN && (
+        <CountdownDisplay
+          countdown={true}
+          onComplete={handleMultiplayerCountdownComplete}
+        />
+      )}
+
+      {/* Multiplayer Game Result - Outside app container to avoid blur */}
+      {multiplayerGameEndData && (
+        <MultiplayerGameResult
+          gameState={multiplayerGameEndData.gameState}
+          players={multiplayerGameEndData.players}
+          currentPlayerId={currentPlayerId}
+          winner={multiplayerGameEndData.winner}
+          gameEndReason={multiplayerGameEndData.gameEndReason}
+          onNewGame={handleMultiplayerNewGame}
+          onExit={handleExitMultiplayer}
+        />
       )}
     </>
   );

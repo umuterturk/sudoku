@@ -393,7 +393,7 @@ export const generateCompleteGrid = () => {
 };
 
 // Generate a Sudoku puzzle from the database
-export const generatePuzzle = async (difficulty = 'medium') => {
+export const generatePuzzle = async (difficulty = 'medium', isMultiplayer = false) => {
   try {
     // Dynamically load the puzzle database for the selected difficulty
     const puzzleDatabase = await loadPuzzleDatabase(difficulty);
@@ -419,10 +419,11 @@ export const generatePuzzle = async (difficulty = 'medium') => {
       console.log('🎮 Children mode: inverted puzzle to create unique solving experience');
     }
     
-    // For easy mode, reveal 5 additional random cells to make it more accessible
+    // For easy mode, reveal additional cells to make it more accessible
     if (difficulty === 'easy') {
-      puzzle = revealAdditionalCells(puzzle, solution, 5);
-      console.log('🌟 Easy mode: revealed 5 additional cells for better accessibility');
+      const cellCount = isMultiplayer ? 7 : 5;
+      puzzle = revealAdditionalCells(puzzle, solution, cellCount, isMultiplayer);
+      console.log(`🌟 Easy mode: revealed ${cellCount} additional cells for better accessibility${isMultiplayer ? ' (multiplayer with strategic selection)' : ''}`);
     }
     
     return {
@@ -626,31 +627,84 @@ export const invertPuzzle = (puzzle, solution) => {
   return invertedPuzzle;
 };
 
-// Reveal additional random cells for easy mode
-const revealAdditionalCells = (puzzle, solution, count) => {
-  console.log(`🌟 Revealing ${count} additional cells for easy mode...`);
+// Find cells with the least information (fewest valid possibilities)
+const findCellsWithLeastInformation = (puzzle, solution) => {
+  console.log('🧠 Finding cells with least information...');
   
-  const modifiedPuzzle = puzzle.map(row => [...row]);
-  
-  // Find all empty cells (cells that are 0 in the puzzle)
   const emptyCells = [];
+  
+  // First, find all empty cells and calculate their possibilities
   for (let row = 0; row < 9; row++) {
     for (let col = 0; col < 9; col++) {
       if (puzzle[row][col] === 0) {
-        emptyCells.push({ row, col });
+        const possibilities = [];
+        
+        // Check each number 1-9 to see if it's valid in this position
+        for (let num = 1; num <= 9; num++) {
+          if (isValidMove(puzzle, row, col, num)) {
+            possibilities.push(num);
+          }
+        }
+        
+        emptyCells.push({ 
+          row, 
+          col, 
+          possibilityCount: possibilities.length,
+          possibilities 
+        });
       }
     }
   }
   
-  // If we don't have enough empty cells, reveal what we can
-  const cellsToReveal = Math.min(count, emptyCells.length);
-  console.log(`🎯 Found ${emptyCells.length} empty cells, revealing ${cellsToReveal} of them`);
+  // Sort cells by number of possibilities (ascending - least information first)
+  emptyCells.sort((a, b) => a.possibilityCount - b.possibilityCount);
   
-  // Randomly select cells to reveal
-  const shuffledEmptyCells = emptyCells.sort(() => Math.random() - 0.5);
+  console.log(`🧠 Found ${emptyCells.length} empty cells, sorted by information content`);
+  console.log(`🧠 Cells with least information have ${emptyCells[0]?.possibilityCount || 'N/A'} possibilities`);
+  
+  return emptyCells;
+};
+
+// Reveal additional cells for easy mode
+const revealAdditionalCells = (puzzle, solution, count, isMultiplayer = false) => {
+  console.log(`🌟 Revealing ${count} additional cells for easy mode${isMultiplayer ? ' (multiplayer)' : ''}...`);
+  
+  const modifiedPuzzle = puzzle.map(row => [...row]);
+  let cellsToSelect;
+  
+  if (isMultiplayer) {
+    // For multiplayer, prioritize cells with least information to make game easier
+    console.log('🎮 Multiplayer mode: selecting cells with least information');
+    const sortedCells = findCellsWithLeastInformation(puzzle, solution);
+    cellsToSelect = sortedCells.slice(0, count);
+    
+    console.log(`🧠 Selected ${cellsToSelect.length} cells with least information:`);
+    cellsToSelect.forEach((cell, index) => {
+      console.log(`  ${index + 1}. Cell [${cell.row},${cell.col}] - ${cell.possibilityCount} possibilities: ${cell.possibilities.join(',')}`);
+    });
+  } else {
+    // For single player, use random selection as before
+    console.log('👤 Single player mode: selecting random cells');
+    const emptyCells = [];
+    for (let row = 0; row < 9; row++) {
+      for (let col = 0; col < 9; col++) {
+        if (puzzle[row][col] === 0) {
+          emptyCells.push({ row, col });
+        }
+      }
+    }
+    
+    // Randomly select cells to reveal
+    const shuffledEmptyCells = emptyCells.sort(() => Math.random() - 0.5);
+    cellsToSelect = shuffledEmptyCells.slice(0, count);
+  }
+  
+  // If we don't have enough empty cells, reveal what we can
+  const cellsToReveal = Math.min(count, cellsToSelect.length);
+  console.log(`🎯 Found ${cellsToSelect.length} available cells, revealing ${cellsToReveal} of them`);
   
   for (let i = 0; i < cellsToReveal; i++) {
-    const { row, col } = shuffledEmptyCells[i];
+    const { row, col } = cellsToSelect[i];
     modifiedPuzzle[row][col] = solution[row][col];
     console.log(`✨ Revealed cell [${row},${col}] = ${solution[row][col]}`);
   }
