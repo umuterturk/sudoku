@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Multiplayer Sudoku Demo</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .demo-container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .step {
+            margin: 20px 0;
+            padding: 15px;
+            background: #f8f9fa;
+            border-left: 4px solid #007bff;
+            border-radius: 4px;
+        }
+        .code {
+            background: #f1f3f4;
+            padding: 10px;
+            border-radius: 4px;
+            font-family: monospace;
+            margin: 10px 0;
+        }
+        .button {
+            background: #007bff;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        .button:hover {
+            background: #0056b3;
+        }
+        .success {
+            color: #28a745;
+            font-weight: bold;
+        }
+        .warning {
+            color: #ffc107;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="demo-container">
+        <h1>🎮 Multiplayer Sudoku Challenge Mode Demo</h1>
+        
+        <div class="step">
+            <h3>Step 1: Start the Development Server</h3>
+            <p>Run the following command in your terminal:</p>
+            <div class="code">npm run dev</div>
+            <p>This will start the Vite development server, typically at <code>http://localhost:5173</code></p>
+        </div>
+
+        <div class="step">
+            <h3>Step 2: Test Single-Player Mode</h3>
+            <p>First, make sure the basic game works:</p>
+            <ol>
+                <li>Open the game in your browser</li>
+                <li>Click the menu button (☰) in the top-left</li>
+                <li>Click "New Game" and select a difficulty</li>
+                <li>Verify the game loads and you can play normally</li>
+            </ol>
+        </div>
+
+        <div class="step">
+            <h3>Step 3: Test Multiplayer Mode (Two Tabs)</h3>
+            <p>To test multiplayer functionality with two browser tabs:</p>
+            <ol>
+                <li><strong>Tab 1 (Host):</strong>
+                    <ul>
+                        <li>Click the menu button (☰)</li>
+                        <li>Click "Challenge Friend"</li>
+                        <li>Wait for the room to be created</li>
+                        <li>Copy the invite link that appears</li>
+                    </ul>
+                </li>
+                <li><strong>Tab 2 (Friend):</strong>
+                    <ul>
+                        <li>Open a new tab with the same URL</li>
+                        <li>Paste the invite link in the address bar</li>
+                        <li>Press Enter to join the room</li>
+                    </ul>
+                </li>
+                <li><strong>Both Tabs:</strong>
+                    <ul>
+                        <li>Verify both players see the waiting room</li>
+                        <li>In Tab 1, click "Start Challenge"</li>
+                        <li>Watch the 5-second countdown</li>
+                        <li>Play the game and see real-time progress bars</li>
+                    </ul>
+                </li>
+            </ol>
+        </div>
+
+        <div class="step">
+            <h3>Step 4: Test Real-time Features</h3>
+            <p>While playing in both tabs, verify:</p>
+            <ul>
+                <li>✅ Progress bars update in real-time for both players</li>
+                <li>✅ Game board changes sync between players</li>
+                <li>✅ Timer counts down simultaneously</li>
+                <li>✅ Completion status updates for both players</li>
+            </ul>
+        </div>
+
+        <div class="step">
+            <h3>Step 5: Test Mobile Responsiveness</h3>
+            <p>Open the game on a mobile device or use browser dev tools:</p>
+            <ul>
+                <li>Verify the multiplayer UI is responsive</li>
+                <li>Check that progress bars are visible and readable</li>
+                <li>Ensure the waiting room works on mobile</li>
+            </ul>
+        </div>
+
+        <div class="step">
+            <h3>⚠️ Important Notes</h3>
+            <p class="warning">Firebase Configuration Required:</p>
+            <p>The current implementation uses demo Firebase configuration. For full functionality:</p>
+            <ol>
+                <li>Create a Firebase project at <a href="https://console.firebase.google.com" target="_blank">console.firebase.google.com</a></li>
+                <li>Enable Firestore Database</li>
+                <li>Update <code>src/utils/firebaseConfig.js</code> with your actual configuration</li>
+            </ol>
+        </div>
+
+        <div class="step">
+            <h3>🎯 Expected Behavior</h3>
+            <ul>
+                <li class="success">Challenge Friend button creates a room with unique ID</li>
+                <li class="success">Invite link is automatically copied to clipboard</li>
+                <li class="success">Both players see progress bars at the top</li>
+                <li class="success">5-second countdown starts when both players join</li>
+                <li class="success">Game starts with easy difficulty and 10-minute timer</li>
+                <li class="success">Both players see the same game board</li>
+                <li class="success">Moves and progress sync in real-time</li>
+                <li class="success">Clean, minimal UI that doesn't interfere with gameplay</li>
+            </ul>
+        </div>
+
+        <div class="step">
+            <h3>🔧 Troubleshooting</h3>
+            <p>If you encounter issues:</p>
+            <ul>
+                <li>Check browser console for error messages</li>
+                <li>Ensure both tabs are using the same URL</li>
+                <li>Verify Firebase configuration is correct</li>
+                <li>Try refreshing both tabs and starting over</li>
+            </ul>
+        </div>
+
+        <div style="text-align: center; margin-top: 30px;">
+            <button class="button" onclick="window.open('http://localhost:5173', '_blank')">
+                🚀 Open Game in New Tab
+            </button>
+        </div>
+    </div>
+</body>
+</html>
+
