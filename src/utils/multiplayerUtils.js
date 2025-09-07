@@ -454,22 +454,56 @@ export const updateGameBoard = async (roomId, newBoard) => {
   return Promise.resolve();
 };
 
+// Connection state management
+let activeConnections = new Map();
+
+// Clean up connection when component unmounts or page unloads
+const cleanupConnection = (roomId) => {
+  if (activeConnections.has(roomId)) {
+    const unsubscribe = activeConnections.get(roomId);
+    try {
+      unsubscribe();
+      activeConnections.delete(roomId);
+      console.log('🧹 Cleaned up connection for room:', roomId);
+    } catch (error) {
+      console.warn('⚠️ Error cleaning up connection:', error);
+    }
+  }
+};
+
+// Clean up all connections on page unload
+if (typeof window !== 'undefined') {
+  window.addEventListener('beforeunload', () => {
+    activeConnections.forEach((unsubscribe, roomId) => {
+      try {
+        unsubscribe();
+      } catch (error) {
+        console.warn('⚠️ Error cleaning up connection on unload:', error);
+      }
+    });
+    activeConnections.clear();
+  });
+}
+
 // Listen to room changes (lightweight - no board data)
 export const subscribeToRoom = async (roomId, callback) => {
   const roomRef = doc(db, 'gameRooms', roomId);
+  
+  // Clean up any existing connection for this room
+  cleanupConnection(roomId);
   
   // Apply rate limiting before setting up the subscription
   await firestoreRateLimiter.throttle();
   
   let retryCount = 0;
-  const maxRetries = 3;
-  const retryDelay = 2000; // 2 seconds
+  const maxRetries = 2; // Reduced from 3 to prevent connection accumulation
+  const retryDelay = 1500; // Reduced from 2000ms
   
   const setupSubscription = () => {
-    return onSnapshot(
+    const unsubscribe = onSnapshot(
       roomRef,
       {
-        includeMetadataChanges: true, // Include cache state changes
+        // Removed includeMetadataChanges to reduce connection overhead
         next: (doc) => {
           if (doc.exists()) {
             const roomData = doc.data();
@@ -477,32 +511,57 @@ export const subscribeToRoom = async (roomId, callback) => {
             retryCount = 0;
             callback(roomData);
           } else {
+            console.warn('⚠️ Room document not found:', roomId);
             callback(null);
           }
         },
         error: async (error) => {
-          console.error('Error listening to room:', error);
+          console.error('Error listening to room:', error.code, error.message);
           
-          if (retryCount < maxRetries) {
-            retryCount++;
-            console.log(`Retrying subscription (attempt ${retryCount}/${maxRetries})...`);
-            
-            // Wait before retrying
-            await new Promise(resolve => setTimeout(resolve, retryDelay));
-            
-            // Retry subscription
-            return setupSubscription();
+          // Handle specific Firebase errors
+          if (error.code === 'permission-denied') {
+            console.error('❌ Permission denied - check Firestore security rules');
+            callback(null, error);
+            return;
+          }
+          
+          if (error.code === 'unavailable' || error.code === 'internal') {
+            if (retryCount < maxRetries) {
+              retryCount++;
+              console.log(`🔄 Retrying connection (${retryCount}/${maxRetries})...`);
+              
+              // Clean up current connection before retry
+              cleanupConnection(roomId);
+              
+              // Wait before retrying
+              setTimeout(() => {
+                const newUnsubscribe = setupSubscription();
+                activeConnections.set(roomId, newUnsubscribe);
+              }, retryDelay * retryCount); // Exponential backoff
+            } else {
+              console.error('❌ Max retries reached, subscription failed');
+              callback(null, error);
+            }
           } else {
-            console.error('Max retries reached, subscription failed');
+            // For other errors, don't retry
+            console.error('❌ Subscription failed with error:', error.code);
             callback(null, error);
           }
         }
       }
     );
+    
+    return unsubscribe;
   };
   
-  return setupSubscription();
+  const unsubscribe = setupSubscription();
+  activeConnections.set(roomId, unsubscribe);
+  
+  return () => cleanupConnection(roomId);
 };
+
+// Export cleanup function for manual cleanup
+export const cleanupRoomConnection = cleanupConnection;
 
 // Get game content (board and solution) - only call when needed
 export const getGameContent = async (roomId) => {

@@ -19,9 +19,17 @@ export default defineConfig({
   server: {
     port: 3000,
     open: true,
-    // Ensure proper MIME types for manifest files
+    // Ensure proper MIME types and CORS headers for development
     headers: {
-      'Cache-Control': 'no-cache'
+      'Cache-Control': 'no-cache',
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization'
+    },
+    // Handle CORS properly for Firebase connections
+    cors: {
+      origin: ['http://localhost:3000', 'https://umuterturk.github.io'],
+      credentials: true
     }
   },
   // GitHub Pages compatibility
