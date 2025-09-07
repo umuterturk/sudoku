@@ -30,7 +30,7 @@ class RateLimiter {
 }
 
 // Create instances for different services
-export const firestoreRateLimiter = new RateLimiter(10, 60000); // 10 requests per minute for Firestore
+export const firestoreRateLimiter = new RateLimiter(30, 60000); // 30 requests per minute for Firestore
 export const analyticsRateLimiter = new RateLimiter(5, 60000); // 5 requests per minute for Analytics
 
 // Helper function to wrap Firebase operations with rate limiting

@@ -461,24 +461,47 @@ export const subscribeToRoom = async (roomId, callback) => {
   // Apply rate limiting before setting up the subscription
   await firestoreRateLimiter.throttle();
   
-  // Return the unsubscribe function directly from onSnapshot
-  return onSnapshot(
-    roomRef,
-    (doc) => {
-      if (doc.exists()) {
-        const roomData = doc.data();
-        
-        // Room data no longer contains board/solution - they're fetched separately when needed
-        callback(roomData);
-      } else {
-        callback(null);
+  let retryCount = 0;
+  const maxRetries = 3;
+  const retryDelay = 2000; // 2 seconds
+  
+  const setupSubscription = () => {
+    return onSnapshot(
+      roomRef,
+      {
+        includeMetadataChanges: true, // Include cache state changes
+        next: (doc) => {
+          if (doc.exists()) {
+            const roomData = doc.data();
+            // Reset retry count on successful update
+            retryCount = 0;
+            callback(roomData);
+          } else {
+            callback(null);
+          }
+        },
+        error: async (error) => {
+          console.error('Error listening to room:', error);
+          
+          if (retryCount < maxRetries) {
+            retryCount++;
+            console.log(`Retrying subscription (attempt ${retryCount}/${maxRetries})...`);
+            
+            // Wait before retrying
+            await new Promise(resolve => setTimeout(resolve, retryDelay));
+            
+            // Retry subscription
+            return setupSubscription();
+          } else {
+            console.error('Max retries reached, subscription failed');
+            callback(null, error);
+          }
+        }
       }
-    },
-    (error) => {
-      console.error('Error listening to room:', error);
-      callback(null, error);
-    }
-  );
+    );
+  };
+  
+  return setupSubscription();
 };
 
 // Get game content (board and solution) - only call when needed
