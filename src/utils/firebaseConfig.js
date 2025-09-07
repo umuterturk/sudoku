@@ -27,7 +27,9 @@ if (!firebaseConfig.projectId || !firebaseConfig.apiKey) {
 console.log('🔥 Firebase config loaded:', {
   projectId: firebaseConfig.projectId,
   authDomain: firebaseConfig.authDomain,
-  isProduction: !import.meta.env.DEV
+  isProduction: !import.meta.env.DEV,
+  currentUrl: typeof window !== 'undefined' ? window.location.href : 'unknown',
+  origin: typeof window !== 'undefined' ? window.location.origin : 'unknown'
 });
 
 // Initialize Firebase

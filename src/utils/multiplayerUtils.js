@@ -525,6 +525,24 @@ export const subscribeToRoom = async (roomId, callback) => {
             return;
           }
           
+          // Handle NS_BINDING_ABORTED and similar connection errors
+          if (error.code === 'aborted' || error.message?.includes('NS_BINDING_ABORTED')) {
+            console.warn('🔄 Connection aborted, likely due to CORS or browser limitations');
+            if (retryCount < maxRetries) {
+              retryCount++;
+              console.log(`🔄 Retrying after connection abort (${retryCount}/${maxRetries})...`);
+              cleanupConnection(roomId);
+              setTimeout(() => {
+                const newUnsubscribe = setupSubscription();
+                activeConnections.set(roomId, newUnsubscribe);
+              }, retryDelay * retryCount * 2); // Longer delay for CORS issues
+            } else {
+              console.error('❌ Max retries reached after connection aborts');
+              callback(null, error);
+            }
+            return;
+          }
+          
           if (error.code === 'unavailable' || error.code === 'internal') {
             if (retryCount < maxRetries) {
               retryCount++;
