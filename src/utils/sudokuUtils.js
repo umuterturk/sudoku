@@ -1,5 +1,6 @@
 // Sudoku utility functions
-import persistentCache from './persistentCache.js';
+// NOTE: persistentCache lives in shared/ now
+import persistentCache from './shared/persistentCache.js';
 
 // Cache for loaded puzzle databases to avoid re-importing
 const puzzleCache = new Map();

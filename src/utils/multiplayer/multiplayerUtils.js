@@ -12,8 +12,9 @@ import {
   limit
 } from 'firebase/firestore';
 import { db } from './firebaseConfig.js';
-import { generatePuzzle } from '../shared/sudokuUtils.js';
+import { generatePuzzle, loadPuzzleDatabase, isValidMove } from '../shared/sudokuUtils.js';
 import { firestoreRateLimiter, withRateLimit } from './rateLimiter.js';
+import { getOrCreatePlayerId, storeMultiplayerGameTiming } from './persistentStorage.js';
 
 // Game room states
 export const GAME_STATES = {
@@ -40,16 +41,130 @@ export const generateRoomId = () => {
   return Math.random().toString(36).substring(2, 8).toUpperCase();
 };
 
-// Create a new game room
+// Select a random game ID from the easy puzzle database
+const selectRandomGameId = async (difficulty = 'easy') => {
+  try {
+    const puzzleDatabase = await loadPuzzleDatabase(difficulty);
+    if (!puzzleDatabase || puzzleDatabase.length === 0) {
+      throw new Error(`No puzzles available for difficulty: ${difficulty}`);
+    }
+    return Math.floor(Math.random() * puzzleDatabase.length);
+  } catch (error) {
+    console.error('Failed to select random game ID:', error);
+    throw error;
+  }
+};
+
+// Select extra reveals for multiplayer (cells with least information)
+const selectExtraReveals = async (gameId, difficulty = 'easy', count = 7) => {
+  try {
+    const puzzleDatabase = await loadPuzzleDatabase(difficulty);
+    if (!puzzleDatabase || gameId >= puzzleDatabase.length) {
+      throw new Error('Invalid game ID or puzzle database');
+    }
+    
+    const puzzleEntry = puzzleDatabase[gameId];
+    const [puzzleString] = puzzleEntry;
+    const originalPuzzle = stringToGrid(puzzleString);
+    
+    // Find cells with least information (most constrained)
+    const emptyCells = [];
+    
+    for (let row = 0; row < 9; row++) {
+      for (let col = 0; col < 9; col++) {
+        if (originalPuzzle[row][col] === 0) {
+          const possibilities = [];
+          
+          // Check each number 1-9 to see if it's valid in this position
+          for (let num = 1; num <= 9; num++) {
+            if (isValidMove(originalPuzzle, row, col, num)) {
+              possibilities.push(num);
+            }
+          }
+          
+          emptyCells.push({ 
+            row, 
+            col, 
+            flatIndex: row * 9 + col,
+            possibilityCount: possibilities.length,
+            possibilities
+          });
+        }
+      }
+    }
+    
+    // Sort by least possibilities (most constrained cells)
+    emptyCells.sort((a, b) => a.possibilityCount - b.possibilityCount);
+    
+    // Select the first 'count' cells with least information
+    const selectedCells = emptyCells.slice(0, count);
+    
+    console.log(`🎯 Selected ${selectedCells.length} cells with least information for extra reveals:`);
+    selectedCells.forEach((cell, index) => {
+      console.log(`  ${index + 1}. Cell [${cell.row},${cell.col}] (index ${cell.flatIndex}) - ${cell.possibilityCount} possibilities`);
+    });
+    
+    return selectedCells.map(cell => cell.flatIndex);
+  } catch (error) {
+    console.error('Failed to select extra reveals:', error);
+    throw error;
+  }
+};
+
+// Generate a complete game from game ID and extra reveals
+const generateGameFromId = async (gameId, difficulty = 'easy', extraReveals = []) => {
+  try {
+    const puzzleDatabase = await loadPuzzleDatabase(difficulty);
+    if (!puzzleDatabase || gameId >= puzzleDatabase.length) {
+      throw new Error('Invalid game ID or puzzle database');
+    }
+    
+    const puzzleEntry = puzzleDatabase[gameId];
+    const [puzzleString, solutionString] = puzzleEntry;
+    
+    // Convert to 2D grids
+    const originalPuzzle = stringToGrid(puzzleString);
+    const solution = stringToGrid(solutionString);
+    
+    // Create a copy of the original puzzle to modify
+    const puzzle = originalPuzzle.map(row => [...row]);
+    
+    // Apply extra reveals
+    extraReveals.forEach(flatIndex => {
+      const row = Math.floor(flatIndex / 9);
+      const col = flatIndex % 9;
+      
+      // Only reveal if the cell was originally empty
+      if (row >= 0 && row < 9 && col >= 0 && col < 9 && originalPuzzle[row][col] === 0) {
+        puzzle[row][col] = solution[row][col];
+      }
+    });
+    
+    console.log(`🎮 Generated game from ID ${gameId} with ${extraReveals.length} extra reveals`);
+    
+    return {
+      puzzle,
+      solution
+    };
+  } catch (error) {
+    console.error('Failed to generate game from ID:', error);
+    throw error;
+  }
+};
+
+// Create a new game room with minimal data (game ID and extra reveals only)
 export const createGameRoom = async (playerName = 'Player 1') => {
   try {
     const roomId = generateRoomId();
-    const gameData = await generatePuzzle('easy', true); // Always start with easy difficulty, pass multiplayer flag
+    const difficulty = 'easy'; // Always use easy for multiplayer
     const currentTime = new Date();
     
-    // Convert 2D arrays to flat arrays for Firebase compatibility
-    const flatPuzzle = gameData.puzzle.flat();
-    const flatSolution = gameData.solution.flat();
+    // Select a random game from the easy database
+    const gameId = await selectRandomGameId(difficulty);
+    const extraReveals = await selectExtraReveals(gameId, difficulty);
+    
+    // Generate the complete game data locally for return
+    const gameData = await generateGameFromId(gameId, difficulty, extraReveals);
     
     // Count initial empty cells
     const countEmptyCells = (puzzle) => {
@@ -64,46 +179,36 @@ export const createGameRoom = async (playerName = 'Player 1') => {
       return count;
     };
 
-    // Create room data with board and solution stored separately
+    // Create room data with minimal game info
     const roomData = {
       roomId,
       players: [{
-        id: generatePlayerId(),
+        id: getOrCreatePlayerId(),
         name: playerName,
         progress: 0,
         completed: false,
         joinedAt: currentTime,
         hearts: 3 // Track hearts for each player
       }],
-      difficulty: 'easy',
+      difficulty,
       gameState: GAME_STATES.WAITING,
       timer: 600, // 10 minutes in seconds
       gameStartTime: null, // Will be set when game actually starts
       createdAt: currentTime,
       lastActivity: currentTime,
-      totalEmptyCells: countEmptyCells(gameData.puzzle) // Store initial empty cell count
+      totalEmptyCells: countEmptyCells(gameData.puzzle), // Store initial empty cell count
+      // New minimal game data structure
+      gameId, // Index in the easy puzzles array
+      extraReveals // Array of flat indices for cells to reveal
     };
 
-    // Store the board and solution in a separate document for initial sharing only
-    const gameContentData = {
-      gameBoard: flatPuzzle,
-      solution: flatSolution,
-      roomId: roomId
-    };
-
-    // Save both documents
-    await Promise.all([
-      withRateLimit(
-        () => setDoc(doc(db, 'gameRooms', roomId), roomData),
-        firestoreRateLimiter
-      ),
-      withRateLimit(
-        () => setDoc(doc(db, 'gameContent', roomId), gameContentData),
-        firestoreRateLimiter
-      )
-    ]);
+    // Save only the room data (no separate game content document)
+    await withRateLimit(
+      () => setDoc(doc(db, 'gameRooms', roomId), roomData),
+      firestoreRateLimiter
+    );
     
-    // Return the original 2D arrays for the app to use
+    // Return the generated game data for local use
     return {
       roomId,
       roomData: {
@@ -163,47 +268,41 @@ export const clearPlayerData = () => {
 export const joinGameRoom = async (roomId, playerName = 'Player 2') => {
   try {
     const roomRef = doc(db, 'gameRooms', roomId);
-    const gameContentRef = doc(db, 'gameContent', roomId);
     
-    // Fetch both room data and game content
-    const [roomSnap, gameContentSnap] = await Promise.all([
-      withRateLimit(() => getDoc(roomRef), firestoreRateLimiter),
-      withRateLimit(() => getDoc(gameContentRef), firestoreRateLimiter)
-    ]);
+    // Fetch room data only
+    const roomSnap = await withRateLimit(() => getDoc(roomRef), firestoreRateLimiter);
     
     if (!roomSnap.exists()) {
       throw new Error('Room not found');
     }
     
-    if (!gameContentSnap.exists()) {
-      throw new Error('Game content not found');
+    const roomData = roomSnap.data();
+    
+    // Validate that room has game ID and extra reveals
+    if (typeof roomData.gameId !== 'number' || !Array.isArray(roomData.extraReveals)) {
+      throw new Error('Invalid room data - missing game ID or extra reveals');
     }
     
-    const roomData = roomSnap.data();
-    const gameContentData = gameContentSnap.data();
+    // Check if current persistent player ID is already in the room (reconnection)
+    const currentPlayerId = getOrCreatePlayerId();
+    const existingPlayer = roomData.players.find(p => p.id === currentPlayerId);
     
-    // Check for stored player data
-    const storedData = getStoredPlayerData();
-    const isRejoining = storedData && storedData.roomId === roomId;
-    
-    if (isRejoining) {
-      // Find the player in the room
-      const existingPlayer = roomData.players.find(p => p.id === storedData.playerId);
-      if (existingPlayer) {
-        console.log('🔄 Player rejoining room:', storedData.playerId);
-        // Convert flat arrays back to 2D arrays for the app
-        const gameBoard2D = flatArrayTo2D(gameContentData.gameBoard);
-        const solution2D = flatArrayTo2D(gameContentData.solution);
-        
-        return {
-          roomId,
-          roomData: {
-            ...roomData,
-            gameBoard: gameBoard2D,
-            solution: solution2D
-          }
-        };
-      }
+    if (existingPlayer) {
+      console.log('🔄 Player reconnecting to room:', currentPlayerId);
+      // Store player data for session continuity
+      storePlayerData(roomId, currentPlayerId);
+      
+      // Generate game data from room's game ID and extra reveals
+      const gameData = await generateGameFromId(roomData.gameId, roomData.difficulty, roomData.extraReveals);
+      
+      return {
+        roomId,
+        roomData: {
+          ...roomData,
+          gameBoard: gameData.puzzle,
+          solution: gameData.solution
+        }
+      };
     }
     
     // For new players, check if room is full
@@ -217,7 +316,7 @@ export const joinGameRoom = async (roomId, playerName = 'Player 2') => {
     }
     
     const newPlayer = {
-      id: generatePlayerId(),
+      id: getOrCreatePlayerId(),
       name: playerName,
       progress: 0,
       completed: false,
@@ -236,17 +335,16 @@ export const joinGameRoom = async (roomId, playerName = 'Player 2') => {
     // Store player data for rejoining
     storePlayerData(roomId, newPlayer.id);
     
-    // Convert flat arrays back to 2D arrays for the app
-    const gameBoard2D = flatArrayTo2D(gameContentData.gameBoard);
-    const solution2D = flatArrayTo2D(gameContentData.solution);
+    // Generate game data from room's game ID and extra reveals
+    const gameData = await generateGameFromId(roomData.gameId, roomData.difficulty, roomData.extraReveals);
     
     return {
       roomId,
       roomData: { 
         ...roomData, 
         players: [...roomData.players, newPlayer],
-        gameBoard: gameBoard2D,
-        solution: solution2D
+        gameBoard: gameData.puzzle,
+        solution: gameData.solution
       }
     };
   } catch (error) {
@@ -266,35 +364,52 @@ export const startGame = async (roomId) => {
       lastActivity: new Date()
     });
     
-    // Start the actual game after 5 seconds
-    setTimeout(async () => {
-      const gameStartTime = new Date();
-      await updateDoc(roomRef, {
-        gameState: GAME_STATES.PLAYING,
-        gameStartTime: gameStartTime,
-        lastActivity: new Date()
-      });
-      
-      // Set up 10-minute timer to end the game
-      setTimeout(async () => {
-        try {
-          // Check if game is still playing before ending by timer
-          const roomSnap = await getDoc(roomRef);
-          if (roomSnap.exists()) {
-            const roomData = roomSnap.data();
-            if (roomData.gameState === GAME_STATES.PLAYING) {
-              console.log('⏰ 10-minute timer expired, ending game by progress');
-              await endGameByTimer(roomId);
-            }
-          }
-        } catch (error) {
-          console.error('Failed to end game by timer:', error);
-        }
-      }, 600000); // 10 minutes = 600,000 milliseconds
-    }, 5000);
+    console.log('🎯 Countdown started, client will handle timing and transition to playing state');
     
   } catch (error) {
     console.error('Failed to start game:', error);
+    throw error;
+  }
+};
+
+// Transition from countdown to playing state (called by clients after countdown)
+export const startPlayingState = async (roomId) => {
+  try {
+    const roomRef = doc(db, 'gameRooms', roomId);
+    const gameStartTime = new Date();
+    const gameEndTime = new Date(gameStartTime.getTime() + 600000); // 10 minutes from start
+    
+    await updateDoc(roomRef, {
+      gameState: GAME_STATES.PLAYING,
+      gameStartTime: gameStartTime,
+      gameEndTime: gameEndTime,
+      lastActivity: new Date()
+    });
+    
+    // Store game timing locally for reconnection
+    storeMultiplayerGameTiming(roomId, gameStartTime, gameEndTime);
+    
+    console.log('🎮 Game state updated to playing', { gameStartTime, gameEndTime });
+    
+    // Set up 10-minute timer to end the game
+    setTimeout(async () => {
+      try {
+        // Check if game is still playing before ending by timer
+        const roomSnap = await getDoc(roomRef);
+        if (roomSnap.exists()) {
+          const roomData = roomSnap.data();
+          if (roomData.gameState === GAME_STATES.PLAYING) {
+            console.log('⏰ 10-minute timer expired, ending game by progress');
+            await endGameByTimer(roomId);
+          }
+        }
+      } catch (error) {
+        console.error('Failed to end game by timer:', error);
+      }
+    }, 600000); // 10 minutes = 600,000 milliseconds
+    
+  } catch (error) {
+    console.error('Failed to start playing state:', error);
     throw error;
   }
 };
@@ -557,28 +672,22 @@ export const subscribeToRoom = async (roomId, callback) => {
 // Export cleanup function for manual cleanup
 export const cleanupRoomConnection = cleanupConnection;
 
-// Get game content (board and solution) - only call when needed
-export const getGameContent = async (roomId) => {
+// Get game content from room data (reconstruct from game ID and extra reveals)
+export const getGameContent = async (roomData) => {
   try {
-    const gameContentRef = doc(db, 'gameContent', roomId);
-    const gameContentSnap = await withRateLimit(
-      () => getDoc(gameContentRef),
-      firestoreRateLimiter
-    );
-    
-    if (!gameContentSnap.exists()) {
-      throw new Error('Game content not found');
+    if (!roomData || typeof roomData.gameId !== 'number' || !Array.isArray(roomData.extraReveals)) {
+      throw new Error('Invalid room data - missing game ID or extra reveals');
     }
     
-    const gameContentData = gameContentSnap.data();
+    // Generate game data from room's game ID and extra reveals
+    const gameData = await generateGameFromId(roomData.gameId, roomData.difficulty || 'easy', roomData.extraReveals);
     
-    // Convert flat arrays back to 2D arrays for the app
     return {
-      gameBoard: flatArrayTo2D(gameContentData.gameBoard),
-      solution: flatArrayTo2D(gameContentData.solution)
+      gameBoard: gameData.puzzle,
+      solution: gameData.solution
     };
   } catch (error) {
-    console.error('Failed to get game content:', error);
+    console.error('Failed to get game content from room data:', error);
     throw error;
   }
 };
@@ -601,15 +710,16 @@ export const cleanupOldRooms = async () => {
   }
 };
 
-// Generate a unique player ID
+// Generate a unique player ID (deprecated - use getOrCreatePlayerId from persistentStorage)
 const generatePlayerId = () => {
-  return 'player_' + Math.random().toString(36).substring(2, 15);
+  console.warn('generatePlayerId is deprecated, use getOrCreatePlayerId from persistentStorage');
+  return getOrCreatePlayerId();
 };
 
-// Convert flat array to 2D array (9x9)
-const flatArrayTo2D = (flatArray) => {
-  if (!flatArray || flatArray.length !== 81) {
-    console.warn('Invalid flat array for 2D conversion:', flatArray);
+// Helper function to convert string to 2D grid (avoid circular dependency by defining locally)
+const stringToGrid = (puzzleString) => {
+  if (!puzzleString || puzzleString.length !== 81) {
+    console.warn('Invalid puzzle string:', puzzleString);
     return Array(9).fill().map(() => Array(9).fill(0));
   }
   
@@ -617,21 +727,12 @@ const flatArrayTo2D = (flatArray) => {
   for (let i = 0; i < 9; i++) {
     const row = [];
     for (let j = 0; j < 9; j++) {
-      row.push(flatArray[i * 9 + j]);
+      const char = puzzleString[i * 9 + j];
+      row.push(parseInt(char) || 0);
     }
     grid.push(row);
   }
   return grid;
-};
-
-// Convert 2D array to flat array
-const array2DToFlat = (grid2D) => {
-  if (!grid2D || grid2D.length !== 9) {
-    console.warn('Invalid 2D array for flat conversion:', grid2D);
-    return Array(81).fill(0);
-  }
-  
-  return grid2D.flat();
 };
 
 // Calculate progress percentage based on initial empty cells
@@ -722,28 +823,42 @@ export const endGameWithDraw = async (roomId, reason = 'time_up') => {
 };
 
 // Check game end conditions and handle accordingly
-export const checkAndHandleGameEnd = async (roomId, players, gameContent = null) => {
+export const checkAndHandleGameEnd = async (roomId, players) => {
   try {
+    console.log('🔍 Checking game end conditions:', {
+      roomId,
+      players: players.map(p => ({ id: p.id, hearts: p.hearts, completed: p.completed, name: p.name }))
+    });
+    
     // Check if any player completed the game
     const completedPlayer = players.find(player => player.completed);
     if (completedPlayer) {
+      console.log('🏆 Game ended by completion:', completedPlayer.id);
       await endGameWithWinner(roomId, completedPlayer.id, 'completion');
       return { ended: true, winner: completedPlayer.id, reason: 'completion' };
     }
     
     // Check if any player lost all hearts
-    const playersWithHearts = players.filter(player => (player.hearts || 3) > 0);
+    const playersWithHearts = players.filter(player => {
+      const hearts = (player.hearts ?? 3);
+      return hearts >= 0; // Alive until hearts drops below 0
+    });
+    console.log('💔 Players with hearts:', playersWithHearts.map(p => ({ id: p.id, hearts: p.hearts, name: p.name })));
+    
     if (playersWithHearts.length === 1) {
+      console.log('🏆 Game ended by opponent elimination:', playersWithHearts[0].id);
       await endGameWithWinner(roomId, playersWithHearts[0].id, 'opponent_eliminated');
       return { ended: true, winner: playersWithHearts[0].id, reason: 'opponent_eliminated' };
     }
     
     // Check if all players lost all hearts
     if (playersWithHearts.length === 0) {
+      console.log('🤝 Game ended by all eliminated');
       await endGameWithDraw(roomId, 'all_eliminated');
       return { ended: true, winner: null, reason: 'all_eliminated' };
     }
     
+    console.log('⏳ Game continues - no end conditions met');
     return { ended: false };
   } catch (error) {
     console.error('Failed to check game end conditions:', error);

@@ -14,6 +14,7 @@ import {
 import { db } from './firebaseConfig.js';
 import { generatePuzzle } from './shared/sudokuUtils.js';
 import { firestoreRateLimiter, withRateLimit } from './rateLimiter.js';
+import { getOrCreatePlayerId, storeMultiplayerGameTiming } from './multiplayer/persistentStorage.js';
 
 // Game room states
 export const GAME_STATES = {
@@ -68,7 +69,7 @@ export const createGameRoom = async (playerName = 'Player 1') => {
     const roomData = {
       roomId,
       players: [{
-        id: generatePlayerId(),
+        id: getOrCreatePlayerId(),
         name: playerName,
         progress: 0,
         completed: false,
@@ -182,28 +183,25 @@ export const joinGameRoom = async (roomId, playerName = 'Player 2') => {
     const roomData = roomSnap.data();
     const gameContentData = gameContentSnap.data();
     
-    // Check for stored player data
-    const storedData = getStoredPlayerData();
-    const isRejoining = storedData && storedData.roomId === roomId;
+    // Check if current persistent player ID is already in the room (reconnection)
+    const currentPlayerId = getOrCreatePlayerId();
+    const existingPlayer = roomData.players.find(p => p.id === currentPlayerId);
     
-    if (isRejoining) {
-      // Find the player in the room
-      const existingPlayer = roomData.players.find(p => p.id === storedData.playerId);
-      if (existingPlayer) {
-        console.log('🔄 Player rejoining room:', storedData.playerId);
-        // Convert flat arrays back to 2D arrays for the app
-        const gameBoard2D = flatArrayTo2D(gameContentData.gameBoard);
-        const solution2D = flatArrayTo2D(gameContentData.solution);
-        
-        return {
-          roomId,
-          roomData: {
-            ...roomData,
-            gameBoard: gameBoard2D,
-            solution: solution2D
-          }
-        };
-      }
+    if (existingPlayer) {
+      console.log('🔄 Player reconnecting to room:', currentPlayerId);
+      
+      // Convert flat arrays back to 2D arrays for the app
+      const gameBoard2D = flatArrayTo2D(gameContentData.gameBoard);
+      const solution2D = flatArrayTo2D(gameContentData.solution);
+      
+      return {
+        roomId,
+        roomData: {
+          ...roomData,
+          gameBoard: gameBoard2D,
+          solution: solution2D
+        }
+      };
     }
     
     // For new players, check if room is full
@@ -217,7 +215,7 @@ export const joinGameRoom = async (roomId, playerName = 'Player 2') => {
     }
     
     const newPlayer = {
-      id: generatePlayerId(),
+      id: getOrCreatePlayerId(),
       name: playerName,
       progress: 0,
       completed: false,
@@ -233,8 +231,7 @@ export const joinGameRoom = async (roomId, playerName = 'Player 2') => {
       firestoreRateLimiter
     );
     
-    // Store player data for rejoining
-    storePlayerData(roomId, newPlayer.id);
+    // Note: Session will be stored by MultiplayerManager after this call
     
     // Convert flat arrays back to 2D arrays for the app
     const gameBoard2D = flatArrayTo2D(gameContentData.gameBoard);
@@ -266,35 +263,52 @@ export const startGame = async (roomId) => {
       lastActivity: new Date()
     });
     
-    // Start the actual game after 5 seconds
-    setTimeout(async () => {
-      const gameStartTime = new Date();
-      await updateDoc(roomRef, {
-        gameState: GAME_STATES.PLAYING,
-        gameStartTime: gameStartTime,
-        lastActivity: new Date()
-      });
-      
-      // Set up 10-minute timer to end the game
-      setTimeout(async () => {
-        try {
-          // Check if game is still playing before ending by timer
-          const roomSnap = await getDoc(roomRef);
-          if (roomSnap.exists()) {
-            const roomData = roomSnap.data();
-            if (roomData.gameState === GAME_STATES.PLAYING) {
-              console.log('⏰ 10-minute timer expired, ending game by progress');
-              await endGameByTimer(roomId);
-            }
-          }
-        } catch (error) {
-          console.error('Failed to end game by timer:', error);
-        }
-      }, 600000); // 10 minutes = 600,000 milliseconds
-    }, 5000);
+    console.log('🎯 Countdown started, client will handle timing and transition to playing state');
     
   } catch (error) {
     console.error('Failed to start game:', error);
+    throw error;
+  }
+};
+
+// Transition from countdown to playing state (called by clients after countdown)
+export const startPlayingState = async (roomId) => {
+  try {
+    const roomRef = doc(db, 'gameRooms', roomId);
+    const gameStartTime = new Date();
+    const gameEndTime = new Date(gameStartTime.getTime() + 600000); // 10 minutes from start
+    
+    await updateDoc(roomRef, {
+      gameState: GAME_STATES.PLAYING,
+      gameStartTime: gameStartTime,
+      gameEndTime: gameEndTime,
+      lastActivity: new Date()
+    });
+    
+    // Store game timing locally for reconnection
+    storeMultiplayerGameTiming(roomId, gameStartTime, gameEndTime);
+    
+    console.log('🎮 Game state updated to playing', { gameStartTime, gameEndTime });
+    
+    // Set up 10-minute timer to end the game
+    setTimeout(async () => {
+      try {
+        // Check if game is still playing before ending by timer
+        const roomSnap = await getDoc(roomRef);
+        if (roomSnap.exists()) {
+          const roomData = roomSnap.data();
+          if (roomData.gameState === GAME_STATES.PLAYING) {
+            console.log('⏰ 10-minute timer expired, ending game by progress');
+            await endGameByTimer(roomId);
+          }
+        }
+      } catch (error) {
+        console.error('Failed to end game by timer:', error);
+      }
+    }, 600000); // 10 minutes = 600,000 milliseconds
+    
+  } catch (error) {
+    console.error('Failed to start playing state:', error);
     throw error;
   }
 };
@@ -601,9 +615,10 @@ export const cleanupOldRooms = async () => {
   }
 };
 
-// Generate a unique player ID
+// Generate a unique player ID (deprecated - use getOrCreatePlayerId from persistentStorage)
 const generatePlayerId = () => {
-  return 'player_' + Math.random().toString(36).substring(2, 15);
+  console.warn('generatePlayerId is deprecated, use getOrCreatePlayerId from persistentStorage');
+  return getOrCreatePlayerId();
 };
 
 // Convert flat array to 2D array (9x9)
@@ -732,7 +747,10 @@ export const checkAndHandleGameEnd = async (roomId, players, gameContent = null)
     }
     
     // Check if any player lost all hearts
-    const playersWithHearts = players.filter(player => (player.hearts || 3) > 0);
+    const playersWithHearts = players.filter(player => {
+      const hearts = (player.hearts ?? 3);
+      return hearts >= 0; // treat 0 as still alive; eliminate only when < 0
+    });
     if (playersWithHearts.length === 1) {
       await endGameWithWinner(roomId, playersWithHearts[0].id, 'opponent_eliminated');
       return { ended: true, winner: playersWithHearts[0].id, reason: 'opponent_eliminated' };

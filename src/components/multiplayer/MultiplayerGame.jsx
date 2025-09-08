@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useGameState } from '../../hooks/useGameState.js';
-import { useGameLogic } from '../../hooks/useGameLogic.js';
 import { useMultiplayerTimer } from '../../hooks/useGameTimer.js';
 
 // Shared components
@@ -18,6 +18,7 @@ import {
   MultiplayerGameResult
 } from './MultiplayerUI.jsx';
 import MultiplayerControls from './MultiplayerControls.jsx';
+import MultiplayerOptionsPopup from './MultiplayerOptionsPopup.jsx';
 
 // Icons
 import { Menu } from '@mui/icons-material';
@@ -28,12 +29,11 @@ import { IconButton, Button } from '@mui/material';
  * Handles the complete multiplayer game experience
  */
 const MultiplayerGame = ({ manager, onModeChange, onShowMenu }) => {
-  // Game state and logic hooks
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  
+  // Game state hook
   const gameState = useGameState();
-  const gameLogic = useGameLogic(gameState, {
-    isSoundEnabled: true,
-    isMultiplayer: true
-  });
   const timer = useMultiplayerTimer({
     initialTime: 600, // 10 minutes
     onTimeUp: () => {
@@ -45,49 +45,117 @@ const MultiplayerGame = ({ manager, onModeChange, onShowMenu }) => {
   // UI state
   const [isLoading, setIsLoading] = useState(false);
   const [loadingMessage, setLoadingMessage] = useState('');
+  const [showMultiplayerOptions, setShowMultiplayerOptions] = useState(false);
+  const [hasActiveSession, setHasActiveSession] = useState(false);
   
   // Multiplayer state
   const [multiplayerState, setMultiplayerState] = useState(null);
   const lastStateRef = useRef(null);
+  const lastGameStateRef = useRef(null);
   
   // Initialize manager when component mounts
   useEffect(() => {
-    if (manager && !manager.isInitialized) {
-      manager.initialize(gameState, gameLogic, timer, {
+    if (manager && !manager.isInitialized && timer) {
+      console.log('🔧 Initializing manager for the first time');
+      manager.initialize(gameState, null, timer, {
         isSoundEnabled: true
       });
       
-      // Check for room parameter in URL
-      const roomId = manager.parseRoomFromUrl();
+      // Check for room parameter in URL using React Router
+      const roomId = searchParams.get('r');
       if (roomId) {
         handleJoinRoom(roomId);
       }
     }
-  }, [manager, gameState, gameLogic, timer]);
+  }, [manager, timer, searchParams]); // Removed gameState and gameLogic dependencies to prevent re-initialization
+  
+  // Bridge latest reactive game state into manager without spamming logs every render
+  useEffect(() => {
+    if (!manager?.isInitialized) return;
+    manager.gameState = gameState; // Always keep reference fresh (values mutate each render)
+    if (lastGameStateRef.current !== gameState) {
+      // Log only first few structural reference changes then silence
+      if (!lastGameStateRef.logCount) lastGameStateRef.logCount = 0;
+      if (lastGameStateRef.logCount < 3) {
+        console.log('🔄 Updating manager hook references');
+      } else if (lastGameStateRef.logCount === 3) {
+        console.log('🔕 Further manager hook reference logs suppressed');
+      }
+      lastGameStateRef.logCount += 1;
+      lastGameStateRef.current = gameState;
+    }
+  // Depend only on fields whose identity changes meaningfully rather than whole object
+  }, [
+    manager,
+    gameState.grid,
+    gameState.originalGrid,
+    gameState.solution,
+    gameState.selectedCell,
+    gameState.selectedNumber,
+    gameState.gameStatus,
+    gameState.lives,
+    gameState.isNotesMode,
+    gameState.moveHistory,
+    gameState.undosUsed
+  ]);
+  
   
   // Update multiplayer state when manager state changes
   useEffect(() => {
     if (!manager || !manager.isInitialized) return;
 
-    const state = manager.getMultiplayerState();
-    // Only update if state has actually changed
-    if (JSON.stringify(state) !== JSON.stringify(lastStateRef.current)) {
-      lastStateRef.current = state;
-      setMultiplayerState(state);
-      
-      // Update timer with game start time if available
-      if (state.multiplayerGameStartTime && timer) {
-        // Calculate elapsed time and set remaining time
-        const now = new Date();
-        const elapsed = Math.floor((now - state.multiplayerGameStartTime) / 1000);
-        const remaining = Math.max(0, 600 - elapsed);
-        timer.resetTimer(remaining);
-        if (state.multiplayerGameState === 'playing') {
-          timer.startTimer();
-        }
+    const updateState = () => {
+      const state = manager.getMultiplayerState();
+      // Only update if state has actually changed
+      if (JSON.stringify(state) !== JSON.stringify(lastStateRef.current)) {
+        console.log('🔄 Multiplayer state updated:', {
+          hasRoom: !!state.multiplayerRoom,
+          roomId: state.multiplayerRoom?.roomId,
+          gameState: state.multiplayerGameState,
+          playerCount: state.multiplayerPlayers?.length,
+          players: state.multiplayerPlayers?.map(p => ({ 
+            id: p.id, 
+            hearts: p.hearts, 
+            progress: p.progress, 
+            completed: p.completed,
+            heartLost: p.heartLost 
+          }))
+        });
+        lastStateRef.current = state;
+        setMultiplayerState(state);
+      }
+    };
+
+    // Update immediately
+    updateState();
+
+    // Set up a lighter polling mechanism only if no room data yet
+    let interval;
+    if (!lastStateRef.current?.multiplayerRoom) {
+      interval = setInterval(updateState, 1000); // Check every 1 second only when needed
+    }
+    
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [manager]); // Removed timer dependency to prevent unnecessary re-runs
+  
+  // Handle timer updates when game state changes
+  useEffect(() => {
+    if (!multiplayerState || !timer) return;
+    
+    // Update timer with game start time if available
+    if (multiplayerState.multiplayerGameStartTime) {
+      // Calculate elapsed time and set remaining time
+      const now = new Date();
+      const elapsed = Math.floor((now - multiplayerState.multiplayerGameStartTime) / 1000);
+      const remaining = Math.max(0, 600 - elapsed);
+      timer.resetTimer(remaining);
+      if (multiplayerState.multiplayerGameState === 'playing') {
+        timer.startTimer();
       }
     }
-  }, [manager, timer]);
+  }, [multiplayerState?.multiplayerGameState, multiplayerState?.multiplayerGameStartTime]); // Only react to game state changes
 
   // Handle auto-start check only when game state changes
   useEffect(() => {
@@ -95,6 +163,29 @@ const MultiplayerGame = ({ manager, onModeChange, onShowMenu }) => {
       manager.checkAutoStart();
     }
   }, [manager, multiplayerState?.multiplayerGameState]);
+
+  // Check for active session
+  useEffect(() => {
+    if (manager?.isInitialized) {
+      const hasSession = manager.hasActiveSession();
+      setHasActiveSession(hasSession);
+      console.log('🔍 Checked for active session:', hasSession);
+    }
+  }, [manager]);
+
+  // Handle multiplayer options popup visibility
+  useEffect(() => {
+    if (!multiplayerState || !multiplayerState.multiplayerRoom) {
+      setShowMultiplayerOptions(true);
+    } else {
+      setShowMultiplayerOptions(false);
+      // Clear loading state when room is available
+      if (isLoading) {
+        console.log('🏠 Room data loaded, clearing loading state');
+        setIsLoading(false);
+      }
+    }
+  }, [multiplayerState, isLoading]);
   
   // Handle create room
   const handleCreateRoom = async () => {
@@ -102,12 +193,44 @@ const MultiplayerGame = ({ manager, onModeChange, onShowMenu }) => {
     setLoadingMessage('Creating challenge room...');
     
     try {
-      await manager.createRoom('Player 1');
-      setIsLoading(false);
+      console.log('🚀 Starting room creation...');
+      const { roomId } = await manager.createRoom('Player 1');
+      console.log('✅ Room created successfully:', roomId);
+      
+      // Navigate to the room URL using React Router
+      navigate(`/m?r=${roomId}`, { replace: true });
+      
+      // Loading will be cleared when room state is available
+      console.log('📍 Navigated to room URL');
     } catch (error) {
       console.error('Failed to create room:', error);
       setIsLoading(false);
       // Could show error message here
+    }
+  };
+
+  // Handle continue previous game
+  const handleContinuePreviousGame = async () => {
+    setIsLoading(true);
+    setLoadingMessage('Rejoining previous game...');
+    try {
+      const { roomId } = await manager.continueSession();
+      navigate(`/m?r=${roomId}`, { replace: true });
+      // Loading will be cleared when room state is available
+    } catch (error) {
+      console.error('Failed to continue game:', error);
+      setIsLoading(false);
+      
+      // Clear invalid session and show options
+      if (error.message.includes('Room is full') || 
+          error.message.includes('Room not found') || 
+          error.message.includes('Game has already started') ||
+          error.message.includes('Game session has expired')) {
+        console.log('🚫 Previous session no longer valid, clearing and showing options');
+        manager.exitMultiplayer();
+        setHasActiveSession(false);
+        setShowMultiplayerOptions(true);
+      }
     }
   };
   
@@ -122,9 +245,20 @@ const MultiplayerGame = ({ manager, onModeChange, onShowMenu }) => {
     } catch (error) {
       console.error('Failed to join room:', error);
       setIsLoading(false);
-      // Could show error message and redirect to menu
-      if (onModeChange) {
-        onModeChange('menu');
+      
+      // Handle specific errors for better UX
+      if (error.message.includes('Room is full') || error.message.includes('Room not found') || error.message.includes('Game has already started')) {
+        console.log('🚫 Room no longer available, clearing session and showing options');
+        // Clear the invalid session
+        manager.exitMultiplayer();
+        setHasActiveSession(false);
+        // Show multiplayer options instead of going back to menu
+        setShowMultiplayerOptions(true);
+      } else {
+        // For other errors, redirect to menu
+        if (onModeChange) {
+          onModeChange('menu');
+        }
       }
     }
   };
@@ -154,6 +288,24 @@ const MultiplayerGame = ({ manager, onModeChange, onShowMenu }) => {
   
   // Handle new multiplayer game
   const handleNewMultiplayerGame = () => {
+    // Ensure any game-over state is cleared before starting a new room to avoid overlay stacking
+    try {
+      if (gameState.gameStatus === 'game-over') {
+        gameState.setGameStatus('playing');
+      }
+      // Hide options popup if currently visible (will reopen if creation fails)
+      setShowMultiplayerOptions(false);
+      // Reset basic board state so old grid doesn't flash under loading
+      gameState.resetGameState && gameState.resetGameState();
+      // Clear any multiplayer end result so win/lose/draw overlay disappears immediately
+      if (manager) {
+        manager.multiplayerGameEndData = null;
+        // Optimistically update local state snapshot so overlay hides without waiting for subscription
+        setMultiplayerState(prev => prev ? { ...prev, multiplayerGameEndData: null } : prev);
+      }
+    } catch (e) {
+      console.warn('Failed to pre-reset state for new multiplayer game:', e);
+    }
     handleCreateRoom();
   };
   
@@ -165,7 +317,7 @@ const MultiplayerGame = ({ manager, onModeChange, onShowMenu }) => {
   };
   
   // Show loading screen when needed
-  if (isLoading || (!gameState.grid && !multiplayerState)) {
+  if (isLoading) {
     return (
       <LoadingScreen 
         message={loadingMessage || 'Loading Multiplayer...'}
@@ -174,28 +326,23 @@ const MultiplayerGame = ({ manager, onModeChange, onShowMenu }) => {
     );
   }
   
-  // Show create room screen if no room exists
-  if (!multiplayerState || !multiplayerState.multiplayerRoom) {
+  // If manager is not initialized or no game state, show loading
+  if (!manager?.isInitialized) {
     return (
-      <div className="multiplayer-setup">
-        <div className="multiplayer-setup-content">
-          <h2>Multiplayer Challenge</h2>
-          <p>Create a room to challenge a friend!</p>
-          <button 
-            className="btn btn-primary"
-            onClick={handleCreateRoom}
-            disabled={isLoading}
-          >
-            Create Challenge Room
-          </button>
-          <button 
-            className="btn btn-secondary"
-            onClick={handleExitMultiplayer}
-          >
-            Back to Menu
-          </button>
-        </div>
-      </div>
+      <LoadingScreen 
+        message={'Initializing game...'}
+        showProgress={false}
+      />
+    );
+  }
+  
+  // If no room exists and popup is not shown, show loading
+  if ((!multiplayerState || !multiplayerState.multiplayerRoom) && !showMultiplayerOptions) {
+    return (
+      <LoadingScreen 
+        message={'Loading room data...'}
+        showProgress={false}
+      />
     );
   }
   
@@ -215,6 +362,8 @@ const MultiplayerGame = ({ manager, onModeChange, onShowMenu }) => {
         multiplayerGameState === 'countdown' ? 'countdown-active' : ''
       } ${
         multiplayerGameState === 'waiting' ? 'waiting-active' : ''
+      } ${
+        gameState.gameStatus === 'game-over' ? 'app-game-over-blurred' : ''
       }`}>
         
         {/* Header */}
@@ -231,7 +380,7 @@ const MultiplayerGame = ({ manager, onModeChange, onShowMenu }) => {
               <Menu />
             </IconButton>
             <div className="multiplayer-room-info">
-              <span className="room-id">Room: {multiplayerRoom.roomId}</span>
+              <span className="room-id">Room: {multiplayerRoom?.roomId || 'Loading...'}</span>
             </div>
           </div>
           
@@ -246,7 +395,7 @@ const MultiplayerGame = ({ manager, onModeChange, onShowMenu }) => {
             </div>
             
             {/* Multiplayer Progress Bars */}
-            {multiplayerGameState === 'playing' && (
+            {multiplayerGameState === 'playing' && multiplayerRoom && (
               <div className="header-multiplayer-section">
                 <PlayerProgressBars 
                   players={multiplayerPlayers} 
@@ -283,7 +432,8 @@ const MultiplayerGame = ({ manager, onModeChange, onShowMenu }) => {
               originalGrid={gameState.originalGrid}
               selectedCell={gameState.selectedCell}
               selectedNumber={gameState.selectedNumber}
-              onCellClick={manager ? (row, col) => manager.handleCellClick(row, col) : () => {}}
+              onCellClick={manager && multiplayerGameState === 'playing' && gameState.grid && gameState.originalGrid && gameState.solution ? 
+                (row, col) => manager.handleCellClick(row, col) : () => {}}
               hintLevel="medium" // Fixed for multiplayer
               isAnimating={gameState.isAnimating}
               shakingCompletions={gameState.glowingCompletions}
@@ -295,30 +445,30 @@ const MultiplayerGame = ({ manager, onModeChange, onShowMenu }) => {
             />
 
             <DigitButtons
-              onDigitSelect={manager ? (digit) => manager.handleDigitPlacement(digit) : () => {}}
+              onDigitSelect={manager ? async (digit, row, col) => await manager.handleDigitPlacement(digit, row, col) : async () => {}}
               selectedCell={gameState.selectedCell}
               grid={gameState.grid}
               originalGrid={gameState.originalGrid}
               hintLevel="medium" // Fixed for multiplayer
-              disabled={gameState.isAnimating}
+              disabled={gameState.isAnimating || multiplayerGameState !== 'playing' || !gameState.grid || !gameState.originalGrid || !gameState.solution}
               isNotesMode={gameState.isNotesMode}
               notes={gameState.notes}
             />
 
             <MultiplayerControls
-              onUndo={manager ? () => manager.handleUndo() : () => {}}
+              onUndo={manager ? async () => await manager.handleUndo() : () => {}}
               onNotesToggle={manager ? () => manager.toggleNotesMode() : () => {}}
               canUndo={gameState.moveHistory.length > 0 && gameState.undosUsed < 3}
               undosUsed={gameState.undosUsed}
               isNotesMode={gameState.isNotesMode}
-              isAnimating={gameState.isAnimating}
+              isAnimating={gameState.isAnimating || multiplayerGameState !== 'playing' || !gameState.grid || !gameState.originalGrid || !gameState.solution}
             />
           </div>
         </main>
       </div>
 
       {/* Multiplayer Waiting Room */}
-      {multiplayerGameState === 'waiting' && (
+      {multiplayerGameState === 'waiting' && multiplayerRoom && (
         <div className="multiplayer-overlay">
           <WaitingRoom
             roomId={multiplayerRoom.roomId}
@@ -355,6 +505,55 @@ const MultiplayerGame = ({ manager, onModeChange, onShowMenu }) => {
           onExit={handleExitMultiplayer}
         />
       )}
+
+      {/* Game Over Overlay */}
+      {gameState.gameStatus === 'game-over' && (
+        <div className="game-over-overlay-fullscreen">
+          <div className="game-over-content">
+            <h2>Game Over!</h2>
+            <p>You've lost all your hearts!</p>
+            <div className="game-over-buttons">
+              <Button
+                variant="contained"
+                onClick={handleNewMultiplayerGame}
+                sx={{ 
+                  backgroundColor: '#4CAF50',
+                  '&:hover': { backgroundColor: '#45a049' },
+                  marginRight: '10px'
+                }}
+              >
+                New Game
+              </Button>
+              <Button
+                variant="outlined"
+                onClick={handleExitMultiplayer}
+                sx={{ 
+                  borderColor: '#f44336',
+                  color: '#f44336',
+                  '&:hover': { 
+                    borderColor: '#d32f2f',
+                    backgroundColor: 'rgba(244, 67, 54, 0.04)'
+                  }
+                }}
+              >
+                Exit Multiplayer
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Multiplayer Options Popup */}
+      <MultiplayerOptionsPopup
+        isOpen={showMultiplayerOptions}
+        onClose={() => setShowMultiplayerOptions(false)}
+        onCreateRoom={handleCreateRoom}
+        onContinueGame={handleContinuePreviousGame}
+        onMainPage={handleExitMultiplayer}
+        hasActiveGame={hasActiveSession}
+        isLoading={isLoading}
+        canClose={false} // Force user to make a choice
+      />
     </>
   );
 };

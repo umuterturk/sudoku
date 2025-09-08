@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useMemo } from 'react';
 
 /**
  * Shared game state hook for both singleplayer and multiplayer modes
@@ -9,7 +9,11 @@ export const useGameState = () => {
   const [grid, setGrid] = useState(null);
   const [originalGrid, setOriginalGrid] = useState(null);
   const [solution, setSolution] = useState(null);
-  const [selectedCell, setSelectedCell] = useState(null);
+  const [selectedCell, _setSelectedCell] = useState(null);
+  const setSelectedCell = (cell) => {
+    console.log('🎯 Setting selectedCell:', cell);
+    _setSelectedCell(cell);
+  };
   const [selectedNumber, setSelectedNumber] = useState(null);
   const [difficulty, setDifficulty] = useState('medium');
   const [gameStatus, setGameStatus] = useState('playing'); // playing, completed, error, game-over
@@ -89,7 +93,7 @@ export const useGameState = () => {
     setGlowingCompletions({ rows: [], columns: [], boxes: [] });
   };
   
-  return {
+  return useMemo(() => ({
     // State
     grid,
     originalGrid,
@@ -136,5 +140,14 @@ export const useGameState = () => {
     // Utility functions
     resetGameState,
     initializeGame
-  };
+  }), [
+    grid, originalGrid, solution, selectedCell, selectedNumber, difficulty, gameStatus,
+    lives, previousLives, isShaking, moveHistory, undosUsed, isNotesMode, notes,
+    highlightedCells, errorCells, isAnimating, animationGrid, glowingCompletions,
+    currentGridRef, updateGrid, setOriginalGrid, setSolution, setSelectedCell,
+    setSelectedNumber, setDifficulty, setGameStatus, setLives, setPreviousLives,
+    setIsShaking, setMoveHistory, setUndosUsed, setIsNotesMode, setNotes,
+    setHighlightedCells, setErrorCells, setIsAnimating, setAnimationGrid,
+    setGlowingCompletions, resetGameState, initializeGame
+  ]);
 };

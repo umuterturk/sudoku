@@ -1,0 +1,8 @@
+---
+description: prevent unnecessary explanations
+globs:
+alwaysApply: true
+---
+
+- Do not make explanations unless absolutely necessary and you made a radical change.
+- Keep your responses concise and minimal.

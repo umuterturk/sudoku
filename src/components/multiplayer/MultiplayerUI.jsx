@@ -177,7 +177,7 @@ export const WaitingRoom = ({ roomId, players, onStartGame, isHost }) => {
 
   React.useEffect(() => {
     if (roomId) {
-      const link = `${window.location.origin}${window.location.pathname}?room=${roomId}`;
+      const link = `${window.location.origin}${import.meta.env.BASE_URL}m?r=${roomId}`;
       setInviteLink(link);
     }
   }, [roomId]);

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, Component } from 'react';
+import { Routes, Route, useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import { GameModeManager } from './managers/GameModeManager.js';
 
 // Components
@@ -80,157 +81,221 @@ class ErrorBoundary extends Component {
 }
 
 /**
- * Main App Component - Simplified with new architecture
- * Handles mode switching and provides a unified interface
+ * Main Menu Component - Route: /
  */
-function App() {
-  const [gameMode, setGameMode] = useState('menu'); // menu, singleplayer, multiplayer
-  const [isInitializing, setIsInitializing] = useState(true);
+function MainMenu() {
+  const navigate = useNavigate();
   const [showSettings, setShowSettings] = useState(false);
   
   // Game mode manager - persists across mode changes
   const gameModeManager = useRef(new GameModeManager());
   
-  // Initialize app
   useEffect(() => {
-    const initializeApp = async () => {
-      try {
-        console.log('🚀 Sudoku app initializing...');
-        
-        // Initialize Google Analytics
-        initGA();
-        trackPageView('Sudoku Game - Home');
-        
-        // Check URL for room parameter (multiplayer)
-        const urlParams = new URLSearchParams(window.location.search);
-        const roomId = urlParams.get('room');
-        
-        if (roomId) {
-          console.log('🎮 Found room parameter, switching to multiplayer mode');
-          gameModeManager.current.switchToMultiplayer();
-          setGameMode('multiplayer');
-        } else {
-          // Check for saved singleplayer game
-          const singleplayerManager = gameModeManager.current.singleplayerManager;
-          if (singleplayerManager.hasSavedGame()) {
-            console.log('🎯 Found saved game, switching to singleplayer mode');
-            gameModeManager.current.switchToSingleplayer();
-            setGameMode('singleplayer');
-          } else {
-            console.log('🏠 No saved game or room, showing menu');
-            gameModeManager.current.switchToMenu();
-            setGameMode('menu');
-          }
-        }
-        
-        setIsInitializing(false);
-        console.log('📱 App ready');
-        
-      } catch (error) {
-        console.error('App initialization failed:', error);
-        gameModeManager.current.switchToMenu();
-        setGameMode('menu');
-        setIsInitializing(false);
-      }
-    };
+    console.log('🏠 Main menu loaded');
+    // Initialize Google Analytics
+    initGA();
+    trackPageView('Sudoku Game - Main Menu');
     
-    initializeApp();
+    // Switch to menu mode
+    gameModeManager.current.switchToMenu();
   }, []);
   
-  // Handle mode changes
-  const handleModeChange = (newMode) => {
-    console.log(`🔄 Switching from ${gameMode} to ${newMode}`);
+  const handleModeSelect = (mode) => {
+    console.log(`🔄 Navigating to ${mode} mode`);
     
-    // Switch game mode manager before updating state
-    switch (newMode) {
-      case 'singleplayer':
-        gameModeManager.current.switchToSingleplayer();
-        break;
-      case 'multiplayer':
-        gameModeManager.current.switchToMultiplayer();
-        break;
-      case 'menu':
-        gameModeManager.current.switchToMenu();
-        break;
-    }
-    
-    setGameMode(newMode);
-    
-    // Update URL if needed
-    if (newMode === 'menu') {
-      // Clear any URL parameters when going to menu
-      const url = new URL(window.location);
-      url.search = '';
-      window.history.replaceState({}, document.title, url.toString());
-    }
-  };
-  
-  // Handle settings
-  const handleShowSettings = () => {
-    setShowSettings(true);
-  };
-  
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      if (gameModeManager.current) {
-        gameModeManager.current.cleanup();
-      }
-    };
-  }, []);
-  
-  // Render appropriate component based on current mode
-  const renderGameMode = () => {
-    if (isInitializing) {
-      return <LoadingScreen message="Loading Sudoku..." showProgress={false} />;
-    }
-    
-    switch (gameMode) {
-      case 'singleplayer':
-        return (
-          <SingleplayerGame 
-            manager={gameModeManager.current.singleplayerManager}
-            onModeChange={handleModeChange}
-            onShowMenu={() => handleModeChange('menu')}
-          />
-        );
-        
-      case 'multiplayer':
-        return (
-          <MultiplayerGame 
-            manager={gameModeManager.current.multiplayerManager}
-            onModeChange={handleModeChange}
-            onShowMenu={() => handleModeChange('menu')}
-          />
-        );
-        
-      case 'menu':
-      default:
-        return (
-          <GameMenu 
-            onModeSelect={handleModeChange}
-            onShowSettings={handleShowSettings}
-          />
-        );
+    if (mode === 'singleplayer') {
+      navigate('/s');
+    } else if (mode === 'multiplayer') {
+      navigate('/m');
     }
   };
   
   return (
-    <ErrorBoundary>
-      <div className="app-container">
-        {renderGameMode()}
-        
-        {/* Settings modal placeholder */}
-        {showSettings && (
-          <div className="settings-modal">
-            <div className="settings-content">
-              <h2>Settings</h2>
-              <p>Settings panel coming soon...</p>
-              <button onClick={() => setShowSettings(false)}>Close</button>
-            </div>
+    <div className="app-container">
+      <GameMenu 
+        onModeSelect={handleModeSelect}
+        onShowSettings={() => setShowSettings(true)}
+      />
+      
+      {/* Settings modal placeholder */}
+      {showSettings && (
+        <div className="settings-modal">
+          <div className="settings-content">
+            <h2>Settings</h2>
+            <p>Settings panel coming soon...</p>
+            <button onClick={() => setShowSettings(false)}>Close</button>
           </div>
-        )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Singleplayer Game Component - Route: /s
+ */
+function SingleplayerGameRoute() {
+  const navigate = useNavigate();
+  const [isInitializing, setIsInitializing] = useState(true);
+  const [showContinueOptions, setShowContinueOptions] = useState(false);
+  const gameModeManager = useRef(new GameModeManager());
+  
+  useEffect(() => {
+    const initializeSingleplayer = async () => {
+      try {
+        console.log('🎯 Singleplayer route loaded');
+        trackPageView('Sudoku Game - Singleplayer');
+        
+        // Switch to singleplayer mode
+        gameModeManager.current.switchToSingleplayer();
+        const singleplayerManager = gameModeManager.current.singleplayerManager;
+        
+        // Check for saved game
+        if (singleplayerManager.hasSavedGame()) {
+          console.log('💾 Found saved singleplayer game');
+          setShowContinueOptions(true);
+        }
+        
+        setIsInitializing(false);
+      } catch (error) {
+        console.error('Failed to initialize singleplayer route:', error);
+        setIsInitializing(false);
+      }
+    };
+    
+    initializeSingleplayer();
+  }, []);
+  
+  const handleModeChange = (newMode) => {
+    console.log(`🔄 Mode change requested: ${newMode}`);
+    
+    if (newMode === 'menu') {
+      navigate('/');
+    } else if (newMode === 'multiplayer') {
+      navigate('/m');
+    }
+  };
+  
+  const handleContinueDecision = (shouldContinue) => {
+    setShowContinueOptions(false);
+    // The SingleplayerGame component will handle the actual continue/new game logic
+  };
+  
+  if (isInitializing) {
+    return (
+      <div className="app-container">
+        <LoadingScreen message="Loading singleplayer..." showProgress={false} />
       </div>
+    );
+  }
+  
+  return (
+    <div className="app-container">
+      <SingleplayerGame 
+        manager={gameModeManager.current.singleplayerManager}
+        onModeChange={handleModeChange}
+        onShowMenu={() => navigate('/')}
+        initialShowContinue={showContinueOptions}
+      />
+    </div>
+  );
+}
+
+/**
+ * Multiplayer Game Component - Route: /m and /m?r=ROOM_ID
+ */
+function MultiplayerGameRoute() {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const [searchParams] = useSearchParams();
+  const [isInitializing, setIsInitializing] = useState(true);
+  const gameModeManager = useRef(new GameModeManager());
+  
+  useEffect(() => {
+    const initializeMultiplayer = async () => {
+      try {
+        console.log('🎮 Multiplayer route loaded');
+        trackPageView('Sudoku Game - Multiplayer');
+        
+        // Switch to multiplayer mode
+        gameModeManager.current.switchToMultiplayer();
+        const multiplayerManager = gameModeManager.current.multiplayerManager;
+        
+        // Check for room parameter in URL
+        const roomId = searchParams.get('r');
+        
+        if (roomId) {
+          console.log('🔗 Found room ID in URL:', roomId);
+          // Redirect to clean URL with room parameter for better UX
+          if (location.search !== `?r=${roomId}`) {
+            navigate(`/m?r=${roomId}`, { replace: true });
+            return;
+          }
+        } else {
+          // Check for active multiplayer session, but don't auto-redirect
+          // Let the MultiplayerGame component handle session validation
+          console.log('🎮 No room ID in URL, will show multiplayer options');
+        }
+        
+        setIsInitializing(false);
+      } catch (error) {
+        console.error('Failed to initialize multiplayer route:', error);
+        setIsInitializing(false);
+      }
+    };
+    
+    initializeMultiplayer();
+  }, [location.search, navigate, searchParams]);
+  
+  const handleModeChange = (newMode) => {
+    console.log(`🔄 Mode change requested: ${newMode}`);
+    
+    if (newMode === 'menu') {
+      navigate('/');
+    } else if (newMode === 'singleplayer') {
+      navigate('/s');
+    }
+  };
+  
+  if (isInitializing) {
+    return (
+      <div className="app-container">
+        <LoadingScreen message="Loading multiplayer..." showProgress={false} />
+      </div>
+    );
+  }
+  
+  return (
+    <div className="app-container">
+      <MultiplayerGame 
+        manager={gameModeManager.current.multiplayerManager}
+        onModeChange={handleModeChange}
+        onShowMenu={() => navigate('/')}
+      />
+    </div>
+  );
+}
+
+/**
+ * Main App Component with Routing
+ */
+function App() {
+  // Global cleanup on unmount
+  useEffect(() => {
+    return () => {
+      console.log('🧹 App cleanup');
+    };
+  }, []);
+  
+  return (
+    <ErrorBoundary>
+      <Routes>
+        <Route path="/" element={<MainMenu />} />
+        <Route path="/s" element={<SingleplayerGameRoute />} />
+        <Route path="/m" element={<MultiplayerGameRoute />} />
+        {/* Catch all route - redirect to main menu */}
+        <Route path="*" element={<MainMenu />} />
+      </Routes>
     </ErrorBoundary>
   );
 }

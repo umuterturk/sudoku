@@ -1,5 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { Undo, Lightbulb, Edit, EditOutlined } from '@mui/icons-material';
+import BuyMeCoffee from '../shared/BuyMeCoffe';
 
 /**
  * Singleplayer Controls Component
@@ -108,7 +109,7 @@ const SingleplayerControls = ({
           title="Support Umut - Buy me a coffee!"
         >
           <div id="logo">
-            <img src="/src/assets/buy_me_coffee.svg" alt="Buy Me a Coffee" />
+            <BuyMeCoffee />
           </div>
         </a>
         <span className="control-label">Support</span>

@@ -12,6 +12,20 @@ export default defineConfig({
           res.setHeader('Content-Type', 'application/manifest+json');
           next();
         });
+        
+        // Handle trailing slash redirect for /sudoku -> /sudoku/
+        server.middlewares.use('/sudoku', (req, res, next) => {
+          if (req.url === '/sudoku' || req.url === '/sudoku?') {
+            // Redirect to /sudoku/ with any query parameters preserved
+            const queryString = req.url.includes('?') ? req.url.split('?')[1] : '';
+            const redirectUrl = queryString ? `/sudoku/?${queryString}` : '/sudoku/';
+            
+            res.writeHead(301, { Location: redirectUrl });
+            res.end();
+            return;
+          }
+          next();
+        });
       }
     }
   ],
@@ -30,7 +44,9 @@ export default defineConfig({
     cors: {
       origin: ['http://localhost:3000', 'https://umuterturk.github.io'],
       credentials: true
-    }
+    },
+    // Handle client-side routing
+    historyApiFallback: true
   },
   // GitHub Pages compatibility
   publicDir: 'public',

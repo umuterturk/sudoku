@@ -18,27 +18,39 @@ export class SingleplayerManager extends GameManager {
   
   // Initialize with additional singleplayer-specific options
   initialize(gameState, gameLogic, timer, options = {}) {
-    super.initialize(gameState, gameLogic, timer);
+    console.log('🔄 SingleplayerManager.initialize called with:', {
+      hasGameState: !!gameState,
+      hasGameLogic: !!gameLogic,
+      hasTimer: !!timer,
+      options
+    });
     
     this.hintLevel = options.hintLevel || 'medium';
     this.isSoundEnabled = options.isSoundEnabled !== undefined ? options.isSoundEnabled : true;
     
-    // Set up game logic options
-    if (this.gameLogic) {
-      this.gameLogic.options = {
-        ...this.gameLogic.options,
-        isSoundEnabled: this.isSoundEnabled,
-        onGameComplete: this.handleGameComplete.bind(this),
-        onGameOver: this.handleGameOver.bind(this),
-        onCorrectMove: this.handleCorrectMove.bind(this),
-        onWrongMove: this.handleWrongMove.bind(this),
-        isMultiplayer: false
-      };
-    }
+    // Initialize base class with callbacks
+    super.initialize(gameState, gameLogic, timer, {
+      isSoundEnabled: this.isSoundEnabled,
+      onGameComplete: this.handleGameComplete.bind(this),
+      onGameOver: this.handleGameOver.bind(this),
+      onCorrectMove: this.handleCorrectMove.bind(this),
+      onWrongMove: this.handleWrongMove.bind(this),
+      isMultiplayer: false
+    });
+    
+    console.log('✅ SingleplayerManager initialized successfully');
   }
   
   // Start a new singleplayer game
   async startNewGame(difficulty = 'medium') {
+    console.log('🎮 SingleplayerManager.startNewGame called:', {
+      difficulty,
+      isInitialized: this.isInitialized,
+      hasGameState: !!this.gameState,
+      hasGameLogic: !!this.gameLogic,
+      hasTimer: !!this.timer
+    });
+    
     this.checkInitialization();
     
     try {
@@ -46,6 +58,12 @@ export class SingleplayerManager extends GameManager {
       
       // Generate puzzle
       const { puzzle, solution } = await generatePuzzle(difficulty, false);
+      
+      console.log('🧩 Puzzle generated:', {
+        hasPuzzle: !!puzzle,
+        hasSolution: !!solution,
+        puzzleSize: puzzle?.length
+      });
       
       // Initialize game state
       this.gameState.initializeGame({
@@ -222,8 +240,8 @@ export class SingleplayerManager extends GameManager {
   // Set sound enabled
   setSoundEnabled(enabled) {
     this.isSoundEnabled = enabled;
-    if (this.gameLogic && this.gameLogic.options) {
-      this.gameLogic.options.isSoundEnabled = enabled;
+    if (this.sharedGameLogic) {
+      this.sharedGameLogic.updateOptions({ isSoundEnabled: enabled });
     }
   }
   
@@ -277,7 +295,9 @@ export class SingleplayerManager extends GameManager {
   
   // Cleanup
   cleanup() {
+    console.log('🧹 SingleplayerManager.cleanup called');
     super.cleanup();
     this.clearAutoHintTimer();
+    console.log('✅ SingleplayerManager cleaned up successfully');
   }
 }

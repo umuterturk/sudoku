@@ -1,0 +1,70 @@
+.singleplayer-drawer .MuiDrawer-paper {
+  width: 280px;
+  background-color: #f8f9fa;
+  border-right: 1px solid #e2e8f0;
+}
+
+.sp-drawer-header {
+  padding: 16px;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.sp-drawer-title {
+  font-weight: 600 !important;
+  color: #2d3748;
+}
+
+.sp-drawer-list {
+  padding-top: 0 !important;
+}
+
+.sp-controls-heading {
+  padding-top: 12px !important;
+  padding-bottom: 12px !important;
+}
+
+.sp-section-heading {
+  font-weight: 700 !important;
+  color: #4a5568;
+  letter-spacing: 0.5px;
+}
+
+.sp-drawer-item .MuiListItemIcon-root {
+  min-width: 40px;
+}
+
+.sp-icon {
+  color: #2d3748;
+}
+
+.sp-drawer-item.Mui-disabled {
+  opacity: 0.5;
+}
+
+.sp-divider {
+  margin-top: 4px !important;
+  margin-bottom: 4px !important;
+}
+
+.sp-divider-lg {
+  margin-top: 16px !important;
+  margin-bottom: 16px !important;
+}
+
+.sp-footer-status {
+  padding-top: 4px !important;
+  padding-bottom: 12px !important;
+}
+
+.sp-status-text {
+  color: #718096;
+}
+
+.sp-menu-button {
+  color: #2d3748 !important;
+  margin-right: 8px !important;
+  transition: background-color 0.15s ease-in-out;
+}
+.sp-menu-button:hover {
+  background-color: rgba(45,55,72,0.1) !important;
+}

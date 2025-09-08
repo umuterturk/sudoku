@@ -1,5 +1,6 @@
 import React from 'react';
 import { Undo, Edit, EditOutlined } from '@mui/icons-material';
+import BuyMeCoffee from '../shared/BuyMeCoffe';
 
 /**
  * Multiplayer Controls Component
@@ -25,7 +26,7 @@ const MultiplayerControls = ({
           title="Support Umut - Buy me a coffee!"
         >
           <div id="logo">
-            <img src="/src/assets/buy_me_coffee.svg" alt="Buy Me a Coffee" />
+          <BuyMeCoffee />
           </div>
         </a>
         <span className="control-label">Support</span>

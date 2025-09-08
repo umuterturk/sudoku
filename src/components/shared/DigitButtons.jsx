@@ -7,10 +7,11 @@ const DigitButtons = ({ onDigitSelect, selectedCell, grid, originalGrid, hintLev
   const handleDigitClick = (digit) => {
     if (disabled) return; // Don't handle clicks when disabled
     if (selectedCell) {
+      const [row, col] = selectedCell;
       if (digit === 'X') {
-        onDigitSelect(0); // Clear the cell
+        onDigitSelect(0, row, col); // Clear the cell
       } else {
-        onDigitSelect(digit);
+        onDigitSelect(digit, row, col);
       }
     }
   };
