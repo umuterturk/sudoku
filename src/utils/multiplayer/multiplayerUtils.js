@@ -672,6 +672,32 @@ export const subscribeToRoom = async (roomId, callback) => {
 // Export cleanup function for manual cleanup
 export const cleanupRoomConnection = cleanupConnection;
 
+// Attach a newly created next-round room to an ended room so the opponent can join
+export const attachNextRoom = async (previousRoomId, nextRoomId, requesterId) => {
+  try {
+    if (!previousRoomId || !nextRoomId) throw new Error('Missing room IDs for attachNextRoom');
+    const roomRef = doc(db, 'gameRooms', previousRoomId);
+    // Only add if not already set to avoid accidental overwrites (idempotent)
+    const snap = await getDoc(roomRef);
+    if (!snap.exists()) throw new Error('Previous room not found');
+    const data = snap.data();
+    if (data.nextRoomId && data.nextRoomId !== nextRoomId) {
+      console.warn('attachNextRoom: nextRoomId already set to different value, leaving as-is');
+      return { nextRoomId: data.nextRoomId, unchanged: true };
+    }
+    await updateDoc(roomRef, {
+      nextRoomId,
+      rematchRequestedBy: requesterId || null,
+      rematchCreatedAt: new Date(),
+      lastActivity: new Date()
+    });
+    return { nextRoomId, updated: true };
+  } catch (error) {
+    console.error('Failed to attach next room:', error);
+    throw error;
+  }
+};
+
 // Get game content from room data (reconstruct from game ID and extra reveals)
 export const getGameContent = async (roomData) => {
   try {

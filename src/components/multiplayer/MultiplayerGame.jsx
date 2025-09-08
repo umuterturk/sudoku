@@ -173,6 +173,20 @@ const MultiplayerGame = ({ manager, onModeChange, onShowMenu }) => {
     }
   }, [manager]);
 
+  // Update URL to match current room ID
+  useEffect(() => {
+    if (multiplayerState?.multiplayerRoom?.roomId) {
+      const currentRoomId = multiplayerState.multiplayerRoom.roomId;
+      const urlRoomId = searchParams.get('r');
+      
+      // Only update URL if room ID in state doesn't match URL
+      if (currentRoomId && currentRoomId !== urlRoomId) {
+        console.log('🔄 Updating URL to match current room:', currentRoomId);
+        navigate(`/m?r=${currentRoomId}`, { replace: true });
+      }
+    }
+  }, [multiplayerState?.multiplayerRoom?.roomId, navigate, searchParams]);
+
   // Handle multiplayer options popup visibility
   useEffect(() => {
     if (!multiplayerState || !multiplayerState.multiplayerRoom) {
@@ -240,6 +254,13 @@ const MultiplayerGame = ({ manager, onModeChange, onShowMenu }) => {
     setLoadingMessage('Joining multiplayer game...');
     
     try {
+      // Clear any existing game end data to ensure overlays don't persist
+      if (manager) {
+        manager.multiplayerGameEndData = null;
+        // Update local state proactively
+        setMultiplayerState(prev => prev ? { ...prev, multiplayerGameEndData: null } : prev);
+      }
+      
       await manager.joinRoom(roomId, 'Player 2');
       setIsLoading(false);
     } catch (error) {
@@ -308,6 +329,28 @@ const MultiplayerGame = ({ manager, onModeChange, onShowMenu }) => {
     }
     handleCreateRoom();
   };
+
+  // Handle explicit rematch (create linked next room)
+  const handleRequestRematch = async () => {
+    if (!manager) return;
+    try {
+      // Prevent duplicate requests
+      if (multiplayerState?.nextRoomId) {
+        console.log('Rematch already created, navigating to next room');
+        navigate(`/m?r=${multiplayerState.nextRoomId}`, { replace: true });
+        return;
+      }
+      const playerName = 'Player';
+      const result = await manager.requestRematch(playerName);
+      if (result?.nextRoomId) {
+        navigate(`/m?r=${result.nextRoomId}`, { replace: true });
+      } else {
+        console.warn('Rematch returned without nextRoomId');
+      }
+    } catch (e) {
+      console.error('Failed to request rematch:', e);
+    }
+  };
   
   // Format time for display
   const formatTime = (seconds) => {
@@ -353,9 +396,41 @@ const MultiplayerGame = ({ manager, onModeChange, onShowMenu }) => {
     connectionState,
     currentPlayerId,
     isHost,
-    multiplayerGameEndData
+  multiplayerGameEndData,
+  nextRoomId,
+  rematchRequestedBy
   } = multiplayerState;
   
+  // Handler for invitee to accept rematch and join next room
+  const handleAcceptRematch = async () => {
+    if (manager && nextRoomId) {
+      try {
+        // Aggressively clear any game end data to prevent overlay persistence
+        manager.multiplayerGameEndData = null;
+        
+        // Reset local state proactively to hide any overlays
+        setMultiplayerState(prev => {
+          if (!prev) return null;
+          return {
+            ...prev,
+            multiplayerGameEndData: null,
+            // Force game state to waiting to prevent overlay
+            multiplayerGameState: 'waiting'
+          };
+        });
+        
+        // Join next room with a slight delay to allow UI to update
+        setTimeout(async () => {
+          await manager.joinNextRoom();
+          // Navigate to the new room
+          navigate(`/m?r=${nextRoomId}`, { replace: true });
+        }, 100);
+      } catch (e) {
+        console.error('Failed to join next round:', e);
+      }
+    }
+  };
+
   return (
     <>
       <div className={`app multiplayer-app ${
@@ -493,8 +568,8 @@ const MultiplayerGame = ({ manager, onModeChange, onShowMenu }) => {
         />
       )}
 
-      {/* Multiplayer Game Result */}
-      {multiplayerGameEndData && (
+      {/* Multiplayer Game Result - Only show if we have end data AND in a terminal game state (not playing or countdown) */}
+      {multiplayerGameEndData && multiplayerGameState !== 'countdown' && multiplayerGameState !== 'playing' && (
         <MultiplayerGameResult
           gameState={multiplayerGameEndData.gameState}
           players={multiplayerGameEndData.players}
@@ -503,6 +578,10 @@ const MultiplayerGame = ({ manager, onModeChange, onShowMenu }) => {
           gameEndReason={multiplayerGameEndData.gameEndReason}
           onNewGame={handleNewMultiplayerGame}
           onExit={handleExitMultiplayer}
+          onRematch={handleRequestRematch}
+          nextRoomId={nextRoomId}
+          rematchRequestedBy={rematchRequestedBy}
+          onAcceptRematch={handleAcceptRematch}
         />
       )}
 

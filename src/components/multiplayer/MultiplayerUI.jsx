@@ -249,7 +249,8 @@ export const WaitingRoom = ({ roomId, players, onStartGame, isHost }) => {
 };
 
 // Multiplayer game result component
-export const MultiplayerGameResult = ({ gameState, players, currentPlayerId, winner, gameEndReason, onNewGame, onExit }) => {
+export const MultiplayerGameResult = ({ gameState, players, currentPlayerId, winner, gameEndReason, onNewGame, onExit, onRematch, nextRoomId, rematchRequestedBy, onAcceptRematch }) => {
+  const [rematching, setRematching] = React.useState(false);
   if (!['player_won', 'draw', 'time_up'].includes(gameState)) {
     return null;
   }
@@ -352,7 +353,7 @@ export const MultiplayerGameResult = ({ gameState, players, currentPlayerId, win
           ))}
         </Box>
 
-        <Box className="result-buttons" sx={{ display: 'flex', gap: 2, justifyContent: 'center' }}>
+        <Box className="result-buttons" sx={{ display: 'flex', gap: 2, justifyContent: 'center', flexWrap: 'wrap' }}>
           <button
             onClick={onExit}
             className="btn btn-secondary"
@@ -369,8 +370,41 @@ export const MultiplayerGameResult = ({ gameState, players, currentPlayerId, win
               borderColor: resultInfo.color
             }}
           >
-            New Game
+            New Random
           </button>
+          {onRematch && !nextRoomId && (
+            <button
+              onClick={async () => {
+                if (rematching) return;
+                setRematching(true);
+                try { await onRematch(); } finally { /* keep overlay hidden after state clears */ }
+              }}
+              className="btn btn-primary"
+              style={{ minWidth: '140px', opacity: rematching ? 0.7 : 1 }}
+              disabled={rematching}
+            >
+              {rematching ? 'Starting...' : 'Rematch'}
+            </button>
+          )}
+          {nextRoomId && (
+            rematchRequestedBy === currentPlayerId ? (
+              <button
+                className="btn btn-primary"
+                style={{ minWidth: '160px', backgroundColor: '#2196f3', borderColor: '#2196f3' }}
+                disabled
+              >
+                Waiting Opponent…
+              </button>
+            ) : (
+              <button
+                className="btn btn-primary"
+                style={{ minWidth: '160px', backgroundColor: '#2196f3', borderColor: '#2196f3' }}
+                onClick={onAcceptRematch}
+              >
+                Join Next Round
+              </button>
+            )
+          )}
         </Box>
       </Box>
     </div>

@@ -13,7 +13,8 @@ import {
   clearPlayerData,
   checkAndHandleGameEnd,
   GAME_STATES,
-  CONNECTION_STATES
+  CONNECTION_STATES,
+  attachNextRoom
 } from '../utils/multiplayer/multiplayerUtils.js';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../utils/firebaseConfig.js';
@@ -60,6 +61,9 @@ export class MultiplayerManager extends GameManager {
     this.multiplayerGameEndData = null;
     this.shouldAutoStart = false;
     this.countdownTimer = null;
+  this.nextRoomId = null; // For chained rematch
+  this.rematchRequestedBy = null;
+  this.autoJoinedNextRoom = false;
     
     // Real-time subscription
     this.roomSubscription = null;
@@ -82,11 +86,10 @@ export class MultiplayerManager extends GameManager {
   async createRoom(playerName = 'Player 1') {
     try {
       console.log('🎮 Creating multiplayer challenge room...');
-      
+  // Ensure any previous end-of-game data is cleared so overlays disappear immediately
+  this.multiplayerGameEndData = null;
       this.connectionState = CONNECTION_STATES.CONNECTING;
-      
       const { roomId, roomData } = await createGameRoom(playerName);
-      
       // Separate room metadata from game content
       const { gameBoard, solution, ...roomMetadata } = roomData;
       this.multiplayerRoom = roomMetadata;
@@ -94,8 +97,6 @@ export class MultiplayerManager extends GameManager {
       this.currentPlayerId = roomData.players[0].id; // First player is host
       this.isHost = true;
       this.connectionState = CONNECTION_STATES.CONNECTED;
-      
-      // Initialize game state
       console.log('🎯 Initializing create room game state with:', {
         hasGameBoard: !!gameBoard,
         hasSolution: !!solution,
@@ -106,37 +107,22 @@ export class MultiplayerManager extends GameManager {
         solution: solution,
         selectedDifficulty: roomData.difficulty
       });
-      
-      // Sync hearts with server data for the current player
       const currentPlayer = roomData.players.find(p => p.id === this.currentPlayerId);
       if (currentPlayer && currentPlayer.hearts !== undefined) {
         console.log('💖 Syncing hearts from server:', currentPlayer.hearts);
         this.gameState.setLives(currentPlayer.hearts);
       }
-      
-      // Store initial complete state when room is created
       this.storeInitialCompleteState(roomId, roomData, gameBoard, solution);
-      
       console.log('✅ Create room game state initialized and complete state stored locally');
-      
-      // Don't start timer yet - wait for game to actually start
-      this.timer.resetTimer(0);
-      
-      // Store initial complete state after timer setup
+      this.timer.resetTimer(0); // Wait for actual start
       this.updateCompleteLocalState();
-      
-      // Store session for game continuation
       storeMultiplayerSession(roomId, this.currentPlayerId, {
         isHost: true,
         gameState: GAME_STATES.WAITING
       });
-      
-      // Subscribe to room updates
       await this.subscribeToRoom();
-      
       console.log('✅ Challenge room created:', roomId);
       return { roomId, roomData };
-      
     } catch (error) {
       console.error('Failed to create challenge room:', error);
       this.connectionState = CONNECTION_STATES.DISCONNECTED;
@@ -318,12 +304,19 @@ export class MultiplayerManager extends GameManager {
             progress: p.progress, 
             completed: p.completed,
             heartLost: p.heartLost 
-          }))
+          })),
+          nextRoomId: roomData.nextRoomId,
+          rematchRequestedBy: roomData.rematchRequestedBy
         });
         
         // Update derived state
         this.multiplayerPlayers = roomData.players;
         this.multiplayerGameState = roomData.gameState;
+        this.nextRoomId = roomData.nextRoomId || null;
+        this.rematchRequestedBy = roomData.rematchRequestedBy || null;
+
+  // Do NOT auto-join next room for invitee. Instead, wait for explicit user action (accept rematch)
+  // The UI should now show a 'Join Next Round' or 'Accept Rematch' button for the invitee.
         
         // Sync local game state hearts with server data for current player
         const currentPlayer = roomData.players.find(p => p.id === this.currentPlayerId);
@@ -958,8 +951,90 @@ export class MultiplayerManager extends GameManager {
       currentPlayerId: this.currentPlayerId,
       isHost: this.isHost,
       multiplayerGameStartTime: this.multiplayerGameStartTime,
-      multiplayerGameEndData: this.multiplayerGameEndData
+      multiplayerGameEndData: this.multiplayerGameEndData,
+      nextRoomId: this.nextRoomId,
+      rematchRequestedBy: this.rematchRequestedBy
     };
+  }
+
+  // Request a rematch: host (or any player) creates a fresh room and links it
+  async requestRematch(playerName = 'Player') {
+    if (!this.multiplayerRoom) throw new Error('No current room to rematch from');
+    if (!this.currentPlayerId) throw new Error('No current player ID');
+    const previousRoomId = this.multiplayerRoom.roomId;
+    try {
+  // Proactively clear end overlay
+  this.multiplayerGameEndData = null;
+      // 1. Check if another rematch already exists to avoid duplicate creation
+      console.log('🔁 Rematch requested. Checking existing nextRoomId...');
+      const { doc, getDoc } = await import('firebase/firestore');
+      const { db } = await import('../utils/firebaseConfig.js');
+      const prevRef = doc(db, 'gameRooms', previousRoomId);
+      const prevSnap = await getDoc(prevRef);
+      if (prevSnap.exists()) {
+        const data = prevSnap.data();
+        if (data.nextRoomId) {
+          console.log('ℹ️ Rematch already exists, joining existing next room:', data.nextRoomId);
+          this.nextRoomId = data.nextRoomId;
+          // Join existing next room (opponent already created)
+          await this.joinNextRoom();
+          return { nextRoomId: data.nextRoomId, existing: true };
+        }
+      }
+
+      // 2. Clean up subscription to old room before creating new one to reduce noise
+      if (this.roomSubscription && typeof this.roomSubscription === 'function') {
+        try { this.roomSubscription(); } catch (e) { /* ignore */ }
+        this.roomSubscription = null;
+      }
+
+      // 3. Create the new room using manager.createRoom for full initialization
+      console.log('🆕 Creating brand new rematch room...');
+      const { roomId: newRoomId, roomData } = await this.createRoom(playerName);
+      this.nextRoomId = newRoomId;
+
+      // 4. Link old room -> new room (idempotent). If race lost, adopt existing.
+      let attachedId = newRoomId;
+      try {
+        const result = await attachNextRoom(previousRoomId, newRoomId, this.currentPlayerId);
+        if (result?.nextRoomId && result.nextRoomId !== newRoomId) {
+          // Race condition: other player's room won. Adopt it.
+            console.log('⚔️ Rematch race lost. Adopting opponent room:', result.nextRoomId);
+            attachedId = result.nextRoomId;
+            this.nextRoomId = attachedId;
+            // If our created room differs, we should join the canonical one instead.
+            if (attachedId !== newRoomId) {
+              // Cleanup newly created room local state and switch
+              console.log('🧹 Switching to canonical rematch room');
+              this.cleanup();
+              await this.joinRoom(attachedId, playerName);
+              // Re-assign nextRoomId after join (cleanup clears it)
+              this.nextRoomId = attachedId;
+            }
+        }
+      } catch (attachErr) {
+        console.warn('Failed to attach next room (will still proceed with new room):', attachErr);
+      }
+
+      console.log('✅ Rematch room ready:', this.nextRoomId);
+      return { nextRoomId: this.nextRoomId, roomData };
+    } catch (error) {
+      console.error('Failed to request rematch:', error);
+      throw error;
+    }
+  }
+
+  // Join already-created next room (opponent auto join path)
+  async joinNextRoom() {
+    if (!this.nextRoomId) throw new Error('No next room to join');
+    const nextRoomId = this.nextRoomId;
+    // Clean up current without clearing persistent player ID
+    this.cleanup();
+    // Ensure we stay in multiplayer mode
+    await this.joinRoom(nextRoomId, 'Player');
+  // Preserve linkage value after cleanup reset
+  this.nextRoomId = nextRoomId;
+    return { roomId: nextRoomId };
   }
   
   // Fetch only opponent state from server (for rejoin)
@@ -1048,5 +1123,8 @@ export class MultiplayerManager extends GameManager {
     this.multiplayerGameStartTime = null;
     this.multiplayerGameEndData = null;
     this.shouldAutoStart = false;
+  this.nextRoomId = null;
+  this.rematchRequestedBy = null;
+  this.autoJoinedNextRoom = false;
   }
 }
