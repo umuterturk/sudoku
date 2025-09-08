@@ -12,7 +12,7 @@ import {
   limit
 } from 'firebase/firestore';
 import { db } from './firebaseConfig.js';
-import { generatePuzzle } from './shared/sudokuUtils.js';
+import { generatePuzzle } from '../shared/sudokuUtils.js';
 import { firestoreRateLimiter, withRateLimit } from './rateLimiter.js';
 
 // Game room states
