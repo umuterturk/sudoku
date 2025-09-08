@@ -18,16 +18,12 @@ import {
   startGame, 
   updatePlayerProgress, 
   updatePlayerHearts,
-  updateGameState,
   updatePlayerDigit,
   subscribeToRoom, 
   calculateProgress,
-  generateInviteLink,
   parseRoomFromUrl,
   clearPlayerData,
   checkAndHandleGameEnd,
-  endGameWithWinner,
-  endGameByTimer,
   GAME_STATES,
   CONNECTION_STATES
 } from './utils/multiplayerUtils';

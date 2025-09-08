@@ -2,16 +2,28 @@
 import { initializeApp } from 'firebase/app';
 import { getFirestore, connectFirestoreEmulator } from 'firebase/firestore';
 
-// Firebase configuration using environment variables
+// Try to import dev config (only available in development, ignored by git)
+let devConfig = null;
+try {
+  if (import.meta.env.DEV) {
+    const { devFirebaseConfig } = await import('../config/firebase.dev.js');
+    devConfig = devFirebaseConfig;
+  }
+} catch (error) {
+  // Dev config file doesn't exist, which is expected in production
+  console.log('Dev Firebase config not found (expected in production)');
+}
+
+// Firebase configuration using environment variables with dev fallback
 // Note: GitHub Actions should have these set via secrets
 const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-  appId: import.meta.env.VITE_FIREBASE_APP_ID,
-  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || (import.meta.env.DEV ? devConfig?.apiKey : undefined),
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || (import.meta.env.DEV ? devConfig?.authDomain : undefined),
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || (import.meta.env.DEV ? devConfig?.projectId : undefined),
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || (import.meta.env.DEV ? devConfig?.storageBucket : undefined),
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || (import.meta.env.DEV ? devConfig?.messagingSenderId : undefined),
+  appId: import.meta.env.VITE_FIREBASE_APP_ID || (import.meta.env.DEV ? devConfig?.appId : undefined),
+  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID || (import.meta.env.DEV ? devConfig?.measurementId : undefined)
 };
 
 // Validate configuration

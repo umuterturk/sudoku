@@ -6,7 +6,6 @@ import {
   getDoc, 
   onSnapshot, 
   updateDoc, 
-  deleteDoc,
   query,
   where,
   orderBy,
@@ -391,22 +390,6 @@ export const updatePlayerHearts = async (roomId, playerId, hearts, previousHeart
   }
 };
 
-// Update game state only (no board data)
-export const updateGameState = async (roomId, gameState, additionalData = {}) => {
-  try {
-    const roomRef = doc(db, 'gameRooms', roomId);
-    
-    await updateDoc(roomRef, {
-      gameState,
-      lastActivity: new Date(),
-      ...additionalData
-    });
-    
-  } catch (error) {
-    console.error('Failed to update game state:', error);
-    throw error;
-  }
-};
 
 // Track player digit updates (lightweight - only row, col, value)
 export const updatePlayerDigit = async (roomId, playerId, row, col, value, isCorrect) => {
@@ -446,13 +429,6 @@ export const updatePlayerDigit = async (roomId, playerId, row, col, value, isCor
   }
 };
 
-// DEPRECATED: updateGameBoard - no longer used for simplified multiplayer
-// Only track player actions, not full game state
-export const updateGameBoard = async (roomId, newBoard) => {
-  console.warn('updateGameBoard is deprecated - use updatePlayerDigit instead');
-  // This function is now a no-op to prevent storing full game state
-  return Promise.resolve();
-};
 
 // Connection state management
 let activeConnections = new Map();
@@ -808,11 +784,6 @@ export const endGameByTimer = async (roomId) => {
   }
 };
 
-// Generate shareable invite link
-export const generateInviteLink = (roomId) => {
-  const baseUrl = window.location.origin + window.location.pathname;
-  return `${baseUrl}?room=${roomId}`;
-};
 
 // Parse room ID from URL
 export const parseRoomFromUrl = () => {

@@ -1,0 +1,20 @@
+// Development Firebase configuration template
+// Copy this file to firebase.dev.js and fill in your Firebase project details
+// This file should only be used in development environment
+// DO NOT COMMIT firebase.dev.js - it contains sensitive configuration
+
+export const devFirebaseConfig = {
+  apiKey: "YOUR_API_KEY_HERE",
+  authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
+  projectId: "YOUR_PROJECT_ID",
+  storageBucket: "YOUR_PROJECT_ID.firebasestorage.app",
+  messagingSenderId: "YOUR_SENDER_ID",
+  appId: "YOUR_APP_ID",
+  measurementId: "YOUR_MEASUREMENT_ID"
+};
+
+// Instructions:
+// 1. Copy this file to firebase.dev.js
+// 2. Replace all placeholder values with your actual Firebase configuration
+// 3. The firebase.dev.js file is automatically ignored by git for security
+// 4. For production deployments, use environment variables instead

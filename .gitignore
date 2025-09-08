@@ -87,6 +87,9 @@ jspm_packages/
 # DynamoDB Local files
 .dynamodb/
 
+# Development Firebase config (contains sensitive data)
+src/config/firebase.dev.js
+
 firebase.prod.js
 PRODUCTION_SECURITY_CHECKLIST.md
 GITHUB_PAGES_ENV_SETUP.md
