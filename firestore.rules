@@ -2,14 +2,10 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Game rooms - allow read/write for multiplayer functionality
+    // Game rooms - simplified rules for development
     match /gameRooms/{roomId} {
-      // Allow anyone to read and write to game rooms
-      // In production, you may want to add authentication checks
+      // Allow all operations for game functionality
       allow read, write: if true;
-      
-      // Rate limiting through application logic
-      // Documents have TTL through lastActivity field cleanup
     }
     
     // Game content (boards and solutions) - read-only after creation
