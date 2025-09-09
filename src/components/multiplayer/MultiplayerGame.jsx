@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useGameState } from '../../hooks/useGameState.js';
 import { useMultiplayerTimer } from '../../hooks/useGameTimer.js';

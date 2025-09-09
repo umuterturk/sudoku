@@ -17,27 +17,19 @@ import {
   attachNextRoom
 } from '../utils/multiplayer/multiplayerUtils.js';
 import { doc, getDoc } from 'firebase/firestore';
-import { db } from '../utils/firebaseConfig.js';
+import { db } from '../utils/multiplayer/firebaseConfig.js';
 import {
   storeMultiplayerSession,
   getMultiplayerSession,
   clearMultiplayerSession,
   hasActiveMultiplayerSession,
   getStoredRoomId,
-  updateMultiplayerSession,
   getMultiplayerGameTiming,
   isMultiplayerGameValid,
   storeMultiplayerGameTiming,
   getOrCreatePlayerId,
-  storeMultiplayerLocalGameState,
-  getMultiplayerLocalGameState,
-  clearMultiplayerLocalGameState,
-  hasMultiplayerLocalGameState,
   storeCompleteMultiplayerState,
   getCompleteMultiplayerState,
-  updateCompleteMultiplayerState,
-  clearCompleteMultiplayerState,
-  hasCompleteMultiplayerState,
   getOpponentStateStructure,
   clearAllMultiplayerDataForRoom
 } from '../utils/multiplayer/persistentStorage.js';
@@ -967,8 +959,6 @@ export class MultiplayerManager extends GameManager {
   this.multiplayerGameEndData = null;
       // 1. Check if another rematch already exists to avoid duplicate creation
       console.log('🔁 Rematch requested. Checking existing nextRoomId...');
-      const { doc, getDoc } = await import('firebase/firestore');
-      const { db } = await import('../utils/firebaseConfig.js');
       const prevRef = doc(db, 'gameRooms', previousRoomId);
       const prevSnap = await getDoc(prevRef);
       if (prevSnap.exists()) {

@@ -7,18 +7,7 @@ service cloud.firestore {
       // Allow all operations for game functionality
       allow read, write: if true;
     }
-    
-    // Game content (boards and solutions) - read-only after creation
-    match /gameContent/{roomId} {
-      // Allow reading game content for joining players
-      allow read: if true;
-      
-      // Only allow creation of new game content
-      // Updates are restricted to prevent cheating
-      allow create: if true;
-      allow update, delete: if false;
-    }
-    
+        
     // Deny all other document access
     match /{document=**} {
       allow read, write: if false;

@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState } from 'react';
 import { Undo, Lightbulb, Edit, EditOutlined } from '@mui/icons-material';
 import BuyMeCoffee from '../shared/BuyMeCoffe';
 
