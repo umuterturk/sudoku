@@ -10,6 +10,7 @@
     "build:prod": "npm run build",
     "preview": "npx vite preview",
     "deploy": "npm run build && gh-pages -d dist",
+    "deploy:force": "npm run build && node scripts/update-version.js && gh-pages -d dist",
     "optimize": "node optimize-build.js",
     "firebase:init": "firebase init firestore",
     "firebase:deploy": "firebase deploy --only firestore:rules",

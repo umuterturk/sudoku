@@ -21,7 +21,9 @@ export default defineConfig({
     open: true,
     // Ensure proper MIME types and CORS headers for development
     headers: {
-      'Cache-Control': 'no-cache',
+      'Cache-Control': 'no-cache, no-store, must-revalidate',
+      'Pragma': 'no-cache',
+      'Expires': '0',
       'Access-Control-Allow-Origin': '*',
       'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
       'Access-Control-Allow-Headers': 'Content-Type, Authorization'
@@ -62,10 +64,10 @@ export default defineConfig({
             './src/game_database/expert.js'
           ]
         },
-        // Optimize chunk file names for caching
-        chunkFileNames: 'assets/[name]-[hash].js',
-        entryFileNames: 'assets/[name]-[hash].js',
-        assetFileNames: 'assets/[name]-[hash].[ext]'
+        // Optimize chunk file names for better cache busting
+        chunkFileNames: 'assets/[name]-[hash:8].js',
+        entryFileNames: 'assets/[name]-[hash:8].js',
+        assetFileNames: 'assets/[name]-[hash:8].[ext]'
       }
     },
     // Increase chunk size warning limit (puzzle databases are large)

@@ -1,5 +1,6 @@
 // Service Worker for Sudoku Game with Persistent Cache Support
-const CACHE_NAME = 'sudoku-game-v3'; // Updated version to fix fetch errors
+const CACHE_NAME = 'sudoku-game-v4'; // Updated version to fix cache invalidation
+const APP_VERSION = '1.0.0'; // App version for cache busting
 const urlsToCache = [
   '/sudoku/',
   '/sudoku/index.html',
@@ -13,7 +14,7 @@ const urlsToCache = [
 
 // Install event - cache resources
 self.addEventListener('install', (event) => {
-  console.log('🔧 Service Worker installing...');
+  console.log('🔧 Service Worker installing...', APP_VERSION);
   event.waitUntil(
     caches.open(CACHE_NAME)
       .then((cache) => {
@@ -45,10 +46,32 @@ self.addEventListener('fetch', (event) => {
   );
 });
 
-// Improved fetch handler with better error handling
+// Improved fetch handler with better error handling and cache invalidation
 async function handleFetchWithFallback(request) {
   try {
-    // Try to get from cache first
+    // For asset files (JS, CSS), always try network first to get latest version
+    const isAssetFile = request.url.includes('/assets/') && 
+                       (request.url.endsWith('.js') || request.url.endsWith('.css'));
+    
+    if (isAssetFile) {
+      console.log('🔄 Asset file detected, checking network first:', request.url);
+      try {
+        const networkResponse = await fetch(request);
+        if (networkResponse && networkResponse.status === 200) {
+          // Cache the fresh asset
+          const cache = await caches.open(CACHE_NAME);
+          cache.put(request, networkResponse.clone()).catch((cacheError) => {
+            console.warn('⚠️ Asset cache put failed:', request.url, cacheError);
+          });
+          console.log('✅ Fresh asset loaded from network:', request.url);
+          return networkResponse;
+        }
+      } catch (networkError) {
+        console.warn('⚠️ Network fetch failed for asset, trying cache:', request.url, networkError);
+      }
+    }
+
+    // Try to get from cache first (for non-asset files or when network fails)
     const cachedResponse = await caches.match(request);
     if (cachedResponse) {
       console.log('📱 Serving from cache:', request.url);

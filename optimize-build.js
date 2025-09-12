@@ -83,16 +83,66 @@ function optimizePuzzleDatabases() {
   console.log('💡 Puzzle databases are dynamically loaded - good for performance!');
 }
 
+// Function to add cache-busting headers to built files
+function addCacheBustingHeaders() {
+  console.log('\n🔄 Adding cache-busting optimizations...');
+  
+  const distPath = path.join(__dirname, 'dist');
+  if (!fs.existsSync(distPath)) {
+    console.log('❌ No dist folder found. Run npm run build first.');
+    return;
+  }
+  
+  // Create a version file with build timestamp
+  const versionData = {
+    version: require('./package.json').version,
+    buildTime: new Date().toISOString(),
+    timestamp: Date.now()
+  };
+  
+  const versionPath = path.join(distPath, 'version.json');
+  fs.writeFileSync(versionPath, JSON.stringify(versionData, null, 2));
+  console.log('✅ Created version.json for cache busting');
+  
+  // Update index.html with cache-busting meta tags if not already present
+  const indexPath = path.join(distPath, 'index.html');
+  if (fs.existsSync(indexPath)) {
+    let htmlContent = fs.readFileSync(indexPath, 'utf8');
+    
+    // Add cache-busting meta tags if not present
+    if (!htmlContent.includes('Cache-Control')) {
+      const metaTags = `
+    <!-- Cache control meta tags -->
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">`;
+      
+      htmlContent = htmlContent.replace(
+        '<meta name="theme-color" content="#667eea">',
+        `<meta name="theme-color" content="#667eea">${metaTags}`
+      );
+      
+      fs.writeFileSync(indexPath, htmlContent);
+      console.log('✅ Added cache-busting meta tags to index.html');
+    }
+  }
+  
+  console.log('✅ Cache-busting optimizations complete!');
+}
+
 // Main execution
 if (require.main === module) {
   analyzeBundleSize();
   optimizePuzzleDatabases();
+  addCacheBustingHeaders();
   
   console.log('\n🎯 Optimization Tips:');
   console.log('• Use npm run build for production builds');
+  console.log('• Use npm run deploy:force to force cache invalidation');
   console.log('• Enable gzip compression on your server');
   console.log('• Consider CDN for static assets');
   console.log('• Monitor Core Web Vitals in production');
+  console.log('• Check browser dev tools for cache issues');
 }
 
 module.exports = { analyzeBundleSize, optimizePuzzleDatabases };
