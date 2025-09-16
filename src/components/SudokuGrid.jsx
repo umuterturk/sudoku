@@ -13,7 +13,8 @@ const SudokuGrid = ({
   notes,
   isNotesMode,
   highlightedCells = [],
-  errorCells = []
+  errorCells = [],
+  correctCells = []
 }) => {
   const isOriginalCell = (row, col) => {
     if (isAnimating) return false; // During animation, no cells are "original"
@@ -164,6 +165,22 @@ const SudokuGrid = ({
     return isHighlighted;
   };
 
+  // Check if a cell has a correct digit that shouldn't be changed
+  const isCorrectCell = (row, col) => {
+    const cellKey = `${row}-${col}`;
+    return correctCells.some(cell => cell.key === cellKey);
+  };
+
+  // Check if a cell is clickable (not blocked by error state)
+  const isClickable = (row, col) => {
+    // If there are no errors, all cells are clickable
+    if (errorCells.length === 0) return true;
+    
+    // If there are errors, only cells with errors are clickable
+    const cellKey = `${row}-${col}`;
+    return errorCells.some(cell => cell.key === cellKey);
+  };
+
 
 
   // Handle null grid case
@@ -185,6 +202,8 @@ const SudokuGrid = ({
               isSameNumber={isSameNumber(rowIndex, colIndex)}
               isRelatedToSameNumber={isRelatedToSameNumber(rowIndex, colIndex)}
               isError={hasError(rowIndex, colIndex)}
+              isCorrect={isCorrectCell(rowIndex, colIndex)}
+              isClickable={isClickable(rowIndex, colIndex)}
               onClick={onCellClick}
               row={rowIndex}
               col={colIndex}

@@ -7,6 +7,8 @@ const SudokuCell = ({
   isSameNumber,
   isRelatedToSameNumber,
   isError,
+  isCorrect,
+  isClickable,
   onClick,
   row,
   col,
@@ -25,11 +27,13 @@ const SudokuCell = ({
                     ${isSameNumber ? 'same-number' : ''}
                     ${isRelatedToSameNumber ? 'related-to-same-number' : ''}
                     ${isError ? 'error' : ''}
+                    ${isCorrect ? 'correct' : ''}
+                    ${!isClickable ? 'blocked' : ''}
                     ${isAnimating ? 'animating' : ''}
                     ${shouldGlow ? 'glow-completed' : ''}
                     ${isGreenHighlighted ? 'green-highlighted' : ''}`}
-        onClick={() => !isAnimating && onClick(row, col)}
-        disabled={isAnimating}
+        onClick={() => !isAnimating && isClickable && onClick(row, col)}
+        disabled={isAnimating || !isClickable}
       >
         {value === 0 ? (
           notes && notes.length > 0 ? (

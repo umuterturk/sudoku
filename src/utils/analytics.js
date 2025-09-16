@@ -129,14 +129,6 @@ export const trackHintUsed = (hintLevel, difficulty) => {
   });
 };
 
-// Track flight mode toggle
-export const trackFlightModeToggle = (enabled) => {
-  trackEvent('flight_mode_toggle', {
-    enabled: enabled,
-    event_label: `Flight mode ${enabled ? 'enabled' : 'disabled'}`,
-    value: 1
-  });
-};
 
 export default {
   initGA,
@@ -145,6 +137,5 @@ export default {
   trackGameStarted,
   trackGameCompleted,
   trackGameOver,
-  trackHintUsed,
-  trackFlightModeToggle
+  trackHintUsed
 };

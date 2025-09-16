@@ -1,6 +1,6 @@
 import { isValidMove } from '../utils/sudokuUtils';
 
-const DigitButtons = ({ onDigitSelect, selectedCell, grid, originalGrid, hintLevel, disabled = false, isNotesMode, notes }) => {
+const DigitButtons = ({ onDigitSelect, selectedCell, grid, originalGrid, hintLevel, disabled = false, isNotesMode, notes, correctCells = [] }) => {
   const firstRowDigits = [1, 2, 3, 4, 5];
   const secondRowDigits = [6, 7, 8, 9, 'X'];
 
@@ -39,6 +39,11 @@ const DigitButtons = ({ onDigitSelect, selectedCell, grid, originalGrid, hintLev
     
     // If it's an original cell, always disable
     if (originalGrid[row][col] !== 0) return true;
+    
+    // If it's a correct cell, disable clearing
+    const cellKey = `${row}-${col}`;
+    const isCorrectCell = correctCells.some(cell => cell.key === cellKey);
+    if (isCorrectCell) return true;
     
     // In notes mode, allow clearing if there are notes to clear
     if (isNotesMode && notes && notes[row] && notes[row][col]) {

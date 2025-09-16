@@ -6,7 +6,7 @@
   "display": "standalone",
   "background_color": "#ffffff",
   "theme_color": "#667eea",
-  "description": "Play a fast, beautiful Sudoku game with Easy to Expert difficulties, notes, hints, undo, shareable games, and offline flight mode.",
+  "description": "Play a fast, beautiful Sudoku game with Easy to Expert difficulties, notes, hints, and shareable games.",
   "icons": [
     {
       "src": "/sudoku/favicon.svg",

@@ -1,0 +1,200 @@
+import { useEffect } from 'react';
+import { generatePuzzle, loadPuzzleDatabase, getRandomAnimationPuzzles, preloadPuzzleDatabases } from '../utils/sudokuUtils';
+import { trackGameStarted } from '../utils/analytics';
+
+/**
+ * Custom hook for managing game initialization and animation
+ */
+export const useGameInitialization = (
+  grid,
+  setGrid,
+  originalGrid,
+  setOriginalGrid,
+  solution,
+  setSolution,
+  selectedCell,
+  setSelectedCell,
+  selectedNumber,
+  setSelectedNumber,
+  difficulty,
+  setDifficulty,
+  gameStatus,
+  setGameStatus,
+  lives,
+  setLives,
+  isShaking,
+  setIsShaking,
+  hintLevel,
+  setHintLevel,
+  isPaused,
+  setIsPaused,
+  isAnimating,
+  setIsAnimating,
+  animationGrid,
+  setAnimationGrid,
+  isNotesMode,
+  setIsNotesMode,
+  notes,
+  setNotes,
+  errorCells,
+  setErrorCells,
+  timer,
+  setTimer,
+  isTimerRunning,
+  setIsTimerRunning,
+  isLoading,
+  setIsLoading,
+  loadingMessage,
+  setLoadingMessage,
+  loadingProgress,
+  setLoadingProgress,
+  lastMoveTime,
+  setLastMoveTime,
+  autoHintTimer,
+  setAutoHintTimer,
+  initializeFallbackGame
+) => {
+
+  // Helper function to safely format difficulty string
+  const formatDifficulty = (diff) => {
+    if (!diff || typeof diff !== 'string') {
+      return 'Medium'; // Default fallback
+    }
+    return diff.charAt(0).toUpperCase() + diff.slice(1);
+  };
+
+  const animateGameStart = async (puzzle, puzzleSolution, selectedDifficulty) => {
+    // Set the basic game state first so the grid renders
+    setGrid(puzzle.map(row => [...row]));
+    setOriginalGrid(puzzle.map(row => [...row]));
+    setSolution(puzzleSolution.map(row => [...row]));
+    setSelectedCell(null);
+    setSelectedNumber(null);
+    setGameStatus('playing');
+    setTimer(0);
+    setIsTimerRunning(false); // Don't start timer during animation
+    setLives(3);
+    setIsShaking(false);
+    setDifficulty(selectedDifficulty);
+    setHintLevel('medium');
+    setIsNotesMode(false);
+    setNotes(Array(9).fill().map(() => Array(9).fill().map(() => [])));
+    setIsPaused(false);
+    setErrorCells([]);
+    
+    // Reset auto-hint system for new game
+    setLastMoveTime(Date.now());
+    if (autoHintTimer) {
+      clearTimeout(autoHintTimer);
+      setAutoHintTimer(null);
+    }
+    
+    // Clear any existing saved state when starting new game
+    localStorage.removeItem('sudoku-game-state');
+    
+    // Start animation after a brief delay
+    setTimeout(async () => {
+      setIsAnimating(true);
+      
+      // Get random puzzles from the database for animation
+      const animationPuzzles = await getRandomAnimationPuzzles(selectedDifficulty, 20);
+      
+      let animationStep = 0;
+      const totalSteps = animationPuzzles.length; // Use the number of available puzzles
+      const animationDuration = 600; // 600ms total animation
+      const stepDuration = animationDuration / totalSteps;
+      
+      // Set initial animation grid (first puzzle)
+      setAnimationGrid(animationPuzzles[0]);
+      
+      const animationInterval = setInterval(() => {
+        animationStep++;
+        if (animationStep < totalSteps) {
+          // Show next puzzle from the animation array
+          setAnimationGrid(animationPuzzles[animationStep]);
+        } else {
+          // Animation complete - clean up
+          clearInterval(animationInterval);
+          setAnimationGrid(null);
+          setIsAnimating(false);
+          setIsTimerRunning(true); // Start timer after animation
+        }
+      }, stepDuration);
+    }, 100); // Small delay to ensure grid is rendered first
+  };
+
+  const preloadAllDifficulties = async () => {
+    try {
+      console.log('🔄 Preloading all difficulty levels...');
+      setIsLoading(true);
+      setLoadingMessage('Loading all puzzle databases...');
+      setLoadingProgress(0);
+      
+      const allDifficulties = ['easy', 'children', 'medium', 'hard', 'expert'];
+      
+      await preloadPuzzleDatabases(allDifficulties, (progress) => {
+        console.log(`📦 Loading ${progress.difficulty}: ${progress.completed}/${progress.total} (${Math.round(progress.progress)}%)`);
+        setLoadingMessage(`Loading ${progress.difficulty} puzzles... (${progress.completed}/${progress.total})`);
+        setLoadingProgress(progress.progress);
+      });
+      
+      console.log('✅ All difficulty levels preloaded successfully');
+      setIsLoading(false);
+      return true;
+    } catch (error) {
+      console.error('Failed to preload all difficulties:', error);
+      setIsLoading(false);
+      return false;
+    }
+  };
+
+  const startNewGame = async (selectedDifficulty = difficulty) => {
+    try {
+      console.log(`🎮 Starting new ${selectedDifficulty} game...`);
+      
+      // Since all difficulties are preloaded, we can directly generate the puzzle
+      setLoadingMessage('Generating puzzle...');
+      setLoadingProgress(90);
+      
+      // Generate puzzle from already loaded database
+      const { puzzle, solution: puzzleSolution } = await generatePuzzle(selectedDifficulty);
+      setLoadingProgress(100);
+      console.log(`🧩 Puzzle generated successfully for ${selectedDifficulty} difficulty`);
+      
+      // Hide loading screen and start animation
+      setIsLoading(false);
+      setIsAnimating(true);
+      console.log(`🎬 Starting game animation...`);
+      
+      // Start game animation
+      await animateGameStart(puzzle, puzzleSolution, selectedDifficulty);
+      
+      // Track game started event
+      trackGameStarted(selectedDifficulty);
+      
+      console.log(`✨ Game started successfully!`);
+    } catch (error) {
+      console.error('Failed to start new game:', error);
+      setIsLoading(false);
+      setIsAnimating(false);
+      
+      // Try fallback initialization
+      console.log('🔄 Attempting fallback game initialization...');
+      try {
+        initializeFallbackGame();
+      } catch (fallbackError) {
+        console.error('Fallback initialization also failed:', fallbackError);
+        // Last resort: show error message and reload
+        alert('Game failed to load. The page will reload.');
+        window.location.reload();
+      }
+    }
+  };
+
+  return {
+    startNewGame,
+    animateGameStart,
+    formatDifficulty,
+    preloadAllDifficulties
+  };
+};

@@ -27,7 +27,7 @@ export const loadPuzzleDatabase = async (difficulty) => {
 
   console.log(`🔄 Loading ${difficulty} puzzle database...`);
 
-  // Try to load from persistent cache first (for flight mode)
+  // Try to load from persistent cache first
   try {
     const cachedPuzzles = await persistentCache.getPuzzles(difficulty);
     if (cachedPuzzles && cachedPuzzles.length > 0) {
@@ -77,13 +77,10 @@ export const loadPuzzleDatabase = async (difficulty) => {
       puzzleCache.set(difficulty, puzzles);
       console.log(`✅ ${difficulty} puzzle database loaded successfully (${puzzles.length} puzzles)`);
       
-      // Store in persistent cache if flight mode is enabled
+      // Store in persistent cache for offline use
       try {
-        const isFlightMode = await persistentCache.isFlightModeCacheValid();
-        if (isFlightMode) {
-          await persistentCache.storePuzzles(difficulty, puzzles);
-          console.log(`💾 ${difficulty} puzzles stored in persistent cache for offline use`);
-        }
+        await persistentCache.storePuzzles(difficulty, puzzles);
+        console.log(`💾 ${difficulty} puzzles stored in persistent cache for offline use`);
       } catch (error) {
         console.warn(`Failed to store ${difficulty} puzzles in persistent cache:`, error);
       }
@@ -154,106 +151,10 @@ export const preloadPuzzleDatabases = async (difficulties = ['medium'], onProgre
   await Promise.all(promises);
 };
 
-// Flight mode: preload all difficulties for offline play with persistent storage
-export const enableFlightMode = async (onProgress = null) => {
-  const allDifficulties = ['easy', 'children', 'medium', 'hard', 'expert'];
-  console.log('🛩️ Enabling flight mode - preloading all puzzle databases...');
-  
-  try {
-    // Enable persistent cache first
-    await persistentCache.enableFlightMode();
-    
-    // Preload all puzzle databases
-    await preloadPuzzleDatabases(allDifficulties, onProgress);
-    console.log('✈️ Flight mode enabled! All puzzles cached persistently for offline play.');
-    
-    return true;
-  } catch (error) {
-    console.error('❌ Failed to enable flight mode:', error);
-    return false;
-  }
-};
 
-// Check if flight mode is enabled (async to check persistent cache)
-export const isFlightModeEnabled = async () => {
-  try {
-    // Check persistent cache first
-    const persistentValid = await persistentCache.isFlightModeCacheValid();
-    if (persistentValid) {
-      return true;
-    }
-    
-    // Fallback to localStorage for backward compatibility
-    const flightMode = localStorage.getItem('sudoku-flight-mode');
-    const timestamp = localStorage.getItem('sudoku-flight-mode-timestamp');
-    
-    if (flightMode === 'enabled' && timestamp) {
-      const enabledTime = parseInt(timestamp);
-      const twentyFourHours = 24 * 60 * 60 * 1000;
-      return (Date.now() - enabledTime) < twentyFourHours;
-    }
-    
-    return false;
-  } catch (error) {
-    console.warn('Error checking flight mode status:', error);
-    return false;
-  }
-};
 
-// Synchronous version for backward compatibility
-export const isFlightModeEnabledSync = () => {
-  const flightMode = localStorage.getItem('sudoku-flight-mode');
-  const timestamp = localStorage.getItem('sudoku-flight-mode-timestamp');
-  
-  if (flightMode === 'enabled' && timestamp) {
-    const enabledTime = parseInt(timestamp);
-    const twentyFourHours = 24 * 60 * 60 * 1000;
-    return (Date.now() - enabledTime) < twentyFourHours;
-  }
-  
-  return false;
-};
 
-// Disable flight mode and clear persistent cache
-export const disableFlightMode = async () => {
-  try {
-    await persistentCache.disableFlightMode();
-    console.log('🛬 Flight mode disabled and persistent cache cleared');
-  } catch (error) {
-    console.error('Error disabling flight mode:', error);
-    // Fallback to localStorage cleanup
-    localStorage.removeItem('sudoku-flight-mode');
-    localStorage.removeItem('sudoku-flight-mode-timestamp');
-    console.log('🛬 Flight mode disabled (localStorage only)');
-  }
-};
 
-// Auto-refresh flight mode cache if online and cache is stale
-export const refreshFlightModeCacheIfNeeded = async (onProgress = null) => {
-  try {
-    // Check if we need to refresh
-    const needsRefresh = await persistentCache.refreshCacheIfNeeded();
-    if (!needsRefresh) {
-      console.log('✅ Flight mode cache is fresh - no refresh needed');
-      return false;
-    }
-
-    console.log('🔄 Refreshing flight mode cache...');
-    const allDifficulties = ['easy', 'children', 'medium', 'hard', 'expert'];
-    
-    // Re-enable flight mode (this will update timestamp)
-    await persistentCache.enableFlightMode();
-    
-    // Preload all databases with fresh data
-    await preloadPuzzleDatabases(allDifficulties, onProgress);
-    
-    console.log('✅ Flight mode cache refreshed successfully');
-    return true;
-  } catch (error) {
-    console.error('❌ Failed to refresh flight mode cache:', error);
-    return false;
-  }
-};
 
 
 // Get random puzzle grids for animation using the unified cache system
@@ -741,7 +642,6 @@ export const encodeGameState = (gameState) => {
       t: gameState.timer, // timer
       l: gameState.lives, // lives
       h: gameState.hintLevel, // hint level
-      m: gameState.moveHistory || [], // move history
     };
     
     // Convert to JSON and then to base64
@@ -778,7 +678,6 @@ export const decodeGameState = (base64String) => {
       timer: simplifiedState.t || 0,
       lives: simplifiedState.l !== undefined ? simplifiedState.l : 3,
       hintLevel: simplifiedState.h || 'medium',
-      moveHistory: simplifiedState.m || [],
       gameStatus: 'playing',
       selectedCell: null,
       selectedNumber: null,
