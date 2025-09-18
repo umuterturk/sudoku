@@ -5,6 +5,7 @@ import SudokuBoard from './SudokuBoard';
 import Timer from './Timer';
 import ControlPanel from './ControlPanel';
 import Hearts from './Hearts';
+import MultiplayerProgress from './MultiplayerProgress';
 import { useGameContext } from '../contexts/GameContext';
 
 const GameContainer = ({ 
@@ -49,7 +50,9 @@ const GameContainer = ({
     isPaused,
     gameStatus,
     shareMessage,
-    difficulty
+    difficulty,
+    gameMode,
+    gameModeManager
   } = useGameContext();
 
   return (
@@ -66,11 +69,16 @@ const GameContainer = ({
           >
             <Menu />
           </IconButton>
-          <div className="difficulty-display">
-            <span className="difficulty-value">
-              {formatDifficulty(difficulty)}
-            </span>
-          </div>
+          {(() => {
+            const difficultyDisplay = gameModeManager.getDifficultyDisplay();
+            return difficultyDisplay.show ? (
+              <div className="difficulty-display">
+                <span className="difficulty-value">
+                  {formatDifficulty(difficultyDisplay.difficulty || difficulty)}
+                </span>
+              </div>
+            ) : null;
+          })()}
         </div>
         
         <TimerComponent
@@ -82,6 +90,16 @@ const GameContainer = ({
           onPauseToggle={onPauseToggle}
         />
         <Hearts lives={lives} isShaking={isShaking} />
+        
+        {/* Progress Component - Using strategy pattern */}
+        {(() => {
+          const progressComponent = gameModeManager.getProgressComponent();
+          return progressComponent ? (
+            <div style={{ marginTop: '8px' }}>
+              <MultiplayerProgress {...progressComponent.props} />
+            </div>
+          ) : null;
+        })()}
       </header>
 
       <main className="game-content">

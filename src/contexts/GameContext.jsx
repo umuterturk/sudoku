@@ -1,4 +1,5 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
+import { GameModeManager } from '../strategies/GameModeManager';
 
 const GameContext = createContext();
 
@@ -11,6 +12,10 @@ export const useGameContext = () => {
 };
 
 export const GameProvider = ({ children }) => {
+  // Game mode manager
+  const gameModeManagerRef = useRef(new GameModeManager());
+  const gameModeManager = gameModeManagerRef.current;
+
   // Core game state
   const [grid, setGrid] = useState(null);
   const [originalGrid, setOriginalGrid] = useState(null);
@@ -63,6 +68,28 @@ export const GameProvider = ({ children }) => {
   const [showCompletionPopup, setShowCompletionPopup] = useState(false);
   const [completionData, setCompletionData] = useState(null);
 
+  // Game mode states
+  const [gameMode, setGameMode] = useState('single'); // 'single' or 'multiplayer'
+  const [showGameModeSelector, setShowGameModeSelector] = useState(false);
+  const [showRoomCreationPopup, setShowRoomCreationPopup] = useState(false);
+  const [showRoomJoiningPopup, setShowRoomJoiningPopup] = useState(false);
+
+  // Initialize game mode manager
+  useEffect(() => {
+    gameModeManager.initialize();
+  }, []);
+
+  // Update game mode when gameMode state changes
+  useEffect(() => {
+    gameModeManager.setStrategy(gameMode);
+  }, [gameMode, gameModeManager]);
+
+  // Update multiplayer context when it changes (for multiplayer strategy)
+  useEffect(() => {
+    // This will be called from App.jsx when multiplayer context is available
+    // gameModeManager.updateMultiplayerContext(multiplayerContext);
+  }, []);
+
   // Timer effect
   useEffect(() => {
     let interval = null;
@@ -77,6 +104,27 @@ export const GameProvider = ({ children }) => {
       }
     };
   }, [isTimerRunning, isPaused]);
+
+  // Game mode manager methods
+  const switchGameMode = (mode) => {
+    setGameMode(mode);
+  };
+
+  const getCurrentGameMode = () => {
+    return gameModeManager.getCurrentMode();
+  };
+
+  const isMultiplayerMode = () => {
+    return gameModeManager.isMultiplayerMode();
+  };
+
+  const isSinglePlayerMode = () => {
+    return gameModeManager.isSinglePlayerMode();
+  };
+
+  const updateMultiplayerContext = (multiplayerContext) => {
+    gameModeManager.updateMultiplayerContext(multiplayerContext);
+  };
 
   const contextValue = {
     // Core game state
@@ -162,6 +210,24 @@ export const GameProvider = ({ children }) => {
     setShowCompletionPopup,
     completionData,
     setCompletionData,
+
+    // Game mode states
+    gameMode,
+    setGameMode,
+    showGameModeSelector,
+    setShowGameModeSelector,
+    showRoomCreationPopup,
+    setShowRoomCreationPopup,
+    showRoomJoiningPopup,
+    setShowRoomJoiningPopup,
+
+    // Game mode manager
+    gameModeManager,
+    switchGameMode,
+    getCurrentGameMode,
+    isMultiplayerMode,
+    isSinglePlayerMode,
+    updateMultiplayerContext,
   };
 
   return (

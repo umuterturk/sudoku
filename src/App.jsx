@@ -2,12 +2,16 @@ import React, { useState, useEffect, Component } from 'react';
 import LoadingScreen from './components/LoadingScreen';
 import GameContainer from './components/GameContainer';
 import { GameProvider, useGameContext } from './contexts/GameContext';
+import { MultiplayerProvider, useMultiplayerContext } from './contexts/MultiplayerContext';
 
 // Import popup components directly
 import DifficultyPopup from './components/DifficultyPopup';
 import ResetConfirmationPopup from './components/ResetConfirmationPopup';
 import ContinueGamePopup from './components/ContinueGamePopup';
 import CompletionPopup from './components/CompletionPopup';
+import GameModeSelector from './components/GameModeSelector';
+import RoomCreationPopup from './components/RoomCreationPopup';
+import RoomJoiningPopup from './components/RoomJoiningPopup';
 
 // Import custom hooks
 import { useGameState } from './hooks/useGameState';
@@ -15,13 +19,14 @@ import { useGameLogic } from './hooks/useGameLogic';
 import { useHintSystem } from './hooks/useHintSystem';
 import { usePopupHandlers } from './hooks/usePopupHandlers';
 import { useGameInitialization } from './hooks/useGameInitialization';
+import { useMultiplayerGame } from './hooks/useMultiplayerGame';
 
 // Import utilities
 import { setupCheatCodes, cleanupCheatCodes, idclip } from './utils/cheatCodes';
 import { initGA, trackPageView } from './utils/analytics';
 import { addGameRecord, getDifficultyRecord } from './utils/sudokuUtils';
 import { createPerfectGameSound, createCompletionSound } from './utils/audioUtils';
-import { Add, Refresh, VolumeUp, VolumeOff, Share, Lightbulb } from '@mui/icons-material';
+import { Add, Refresh, VolumeUp, VolumeOff, Share, Lightbulb, ExitToApp } from '@mui/icons-material';
 import { Drawer, List, ListItem, ListItemButton, ListItemIcon, ListItemText, Divider, Box, Typography } from '@mui/material';
 import './App.css';
 
@@ -96,7 +101,9 @@ class ErrorBoundary extends Component {
 function App() {
   return (
     <GameProvider>
-      <AppContent />
+      <MultiplayerProvider>
+        <AppContent />
+      </MultiplayerProvider>
     </GameProvider>
   );
 }
@@ -104,6 +111,32 @@ function App() {
 // App content component that uses the game context
 function AppContent() {
   const gameContext = useGameContext();
+  const multiplayerContext = useMultiplayerContext();
+  
+  // Extract game mode manager
+  const { gameModeManager, switchGameMode, updateMultiplayerContext } = gameContext;
+  
+  // Initialize multiplayer game hook
+  const multiplayerGame = useMultiplayerGame();
+  
+  // Update multiplayer context in game mode manager
+  useEffect(() => {
+    updateMultiplayerContext(multiplayerContext);
+  }, [multiplayerContext, updateMultiplayerContext]);
+  
+  // Handle game exit using strategy pattern
+  const handleGameExit = async () => {
+    try {
+      await gameModeManager.handleGameExit();
+      setIsDrawerOpen(false);
+      // Reset to single player mode
+      switchGameMode('single');
+      // Show game mode selector to start a new game
+      setShowGameModeSelector(true);
+    } catch (error) {
+      console.error('Error exiting game:', error);
+    }
+  };
   const {
     grid,
     setGrid,
@@ -176,7 +209,15 @@ function AppContent() {
     showCompletionPopup,
     setShowCompletionPopup,
     completionData,
-    setCompletionData
+    setCompletionData,
+    gameMode,
+    setGameMode,
+    showGameModeSelector,
+    setShowGameModeSelector,
+    showRoomCreationPopup,
+    setShowRoomCreationPopup,
+    showRoomJoiningPopup,
+    setShowRoomJoiningPopup
   } = gameContext;
 
   // Fallback function to ensure game can always start
@@ -206,8 +247,8 @@ function AppContent() {
       setErrorCells([]);
       setGlowingCompletions({ rows: [], columns: [], boxes: [] });
       
-      // Show difficulty popup to start fresh
-      setShowDifficultyPopup(true);
+      // Show game mode selector to start fresh
+      setShowGameModeSelector(true);
     } catch (error) {
       console.error('Failed to initialize fallback game:', error);
       // Last resort: reload the page
@@ -224,6 +265,7 @@ function AppContent() {
     isPaused, setIsPaused, errorCells, setErrorCells,
     timer, setTimer, isTimerRunning, setIsTimerRunning,
     showContinuePopup, setShowContinuePopup, showDifficultyPopup, setShowDifficultyPopup,
+    showGameModeSelector, setShowGameModeSelector,
     initializeFallbackGame
   );
 
@@ -239,6 +281,26 @@ function AppContent() {
     setLoadingMessage, loadingProgress, setLoadingProgress, lastMoveTime,
     setLastMoveTime, autoHintTimer, setAutoHintTimer, initializeFallbackGame
   );
+
+  // Handle multiplayer game initialization when both players are ready
+  useEffect(() => {
+    if (multiplayerGame.isGameReady && multiplayerGame.gameRoomData && gameModeManager.isMultiplayerMode()) {
+      const initializeMultiplayerGame = async () => {
+        try {
+          const { boardId, revealedCells } = multiplayerGame.gameRoomData;
+          if (boardId && revealedCells) {
+            console.log('🎮 Initializing multiplayer game...');
+            await gameInitialization.initializeMultiplayerGame(boardId, revealedCells);
+            console.log('✅ Multiplayer game initialized successfully');
+          }
+        } catch (error) {
+          console.error('Failed to initialize multiplayer game:', error);
+        }
+      };
+      
+      initializeMultiplayerGame();
+    }
+  }, [multiplayerGame.isGameReady, multiplayerGame.gameRoomData, gameModeManager, gameInitialization]);
 
   const gameLogic = useGameLogic(
     grid, setGrid, originalGrid, setOriginalGrid, solution, setSolution,
@@ -265,8 +327,56 @@ function AppContent() {
     isNotesMode, notes, gameStatus, selectedCell, selectedNumber,
     isPaused, errorCells, setShowDifficultyPopup, setShowResetPopup,
     setShowContinuePopup, setShowCompletionPopup, setIsPaused, setIsTimerRunning,
-    setShareMessage, setCompletionData, gameInitialization.startNewGame
+    setShareMessage, setCompletionData, gameInitialization.startNewGame,
+    setShowGameModeSelector
   );
+
+  // Game mode selection handlers
+  const handleGameModeSelect = (mode) => {
+    if (mode === 'single') {
+      switchGameMode('single');
+      setShowGameModeSelector(false);
+      setShowDifficultyPopup(true);
+    } else if (mode === 'multiplayer') {
+      switchGameMode('multiplayer');
+      setShowGameModeSelector(false);
+      setShowRoomCreationPopup(true);
+    }
+  };
+
+  const handleCreateRoom = async () => {
+    try {
+      await multiplayerGame.handleCreateRoom();
+    } catch (error) {
+      console.error('Failed to create room:', error);
+    }
+  };
+
+  const handleJoinRoom = async (roomCode) => {
+    try {
+      await multiplayerGame.handleJoinRoom(roomCode);
+      setShowRoomJoiningPopup(false);
+    } catch (error) {
+      console.error('Failed to join room:', error);
+    }
+  };
+
+  const handleRoomCreationClose = () => {
+    setShowRoomCreationPopup(false);
+    if (!multiplayerGame.isGameJoined) {
+      setShowGameModeSelector(true);
+    }
+  };
+
+  const handleRoomJoiningClose = () => {
+    setShowRoomJoiningPopup(false);
+    setShowGameModeSelector(true);
+  };
+
+  const handleDifficultyBack = () => {
+    setShowDifficultyPopup(false);
+    setShowGameModeSelector(true);
+  };
 
 
   // Cheat code functions using the extracted utilities
@@ -324,7 +434,7 @@ function AppContent() {
   };
 
   // Show loading screen when loading or when no grid exists and not showing popups
-  if (isLoading || (!grid && !isAnimating && !showDifficultyPopup && !showContinuePopup)) {
+  if (isLoading || (!grid && !isAnimating && !showDifficultyPopup && !showContinuePopup && !showGameModeSelector && !showRoomCreationPopup && !showRoomJoiningPopup)) {
     return (
       <LoadingScreen 
         message={loadingMessage || 'Loading Sudoku...'}
@@ -382,7 +492,7 @@ function AppContent() {
           <ListItem disablePadding>
             <ListItemButton
               onClick={() => {
-                popupHandlers.handleNewGameClick();
+                setShowGameModeSelector(true);
                 setIsDrawerOpen(false);
               }}
               disabled={isAnimating}
@@ -392,6 +502,24 @@ function AppContent() {
               </ListItemIcon>
               <ListItemText 
                 primary="New Game" 
+                primaryTypographyProps={{ fontWeight: 500 }}
+              />
+            </ListItemButton>
+          </ListItem>
+
+          <ListItem disablePadding>
+            <ListItemButton
+              onClick={() => {
+                setShowRoomJoiningPopup(true);
+                setIsDrawerOpen(false);
+              }}
+              disabled={isAnimating}
+            >
+              <ListItemIcon>
+                <Share sx={{ color: '#38b2ac' }} />
+              </ListItemIcon>
+              <ListItemText 
+                primary="Join Room" 
                 primaryTypographyProps={{ fontWeight: 500 }}
               />
             </ListItemButton>
@@ -432,6 +560,24 @@ function AppContent() {
               />
             </ListItemButton>
           </ListItem>
+
+          {/* Exit Game Button - Using strategy pattern */}
+          {gameModeManager.isMultiplayerMode() && (
+            <ListItem disablePadding>
+              <ListItemButton
+                onClick={handleGameExit}
+                disabled={isAnimating}
+              >
+                <ListItemIcon>
+                  <ExitToApp sx={{ color: '#e53e3e' }} />
+                </ListItemIcon>
+                <ListItemText 
+                  primary="Exit Game" 
+                  primaryTypographyProps={{ fontWeight: 500 }}
+                />
+              </ListItemButton>
+            </ListItem>
+          )}
 
           <Divider sx={{ my: 1 }} />
 
@@ -519,6 +665,7 @@ function AppContent() {
         onSelectDifficulty={popupHandlers.handleDifficultySelect}
         currentDifficulty={difficulty}
         canClose={!!(grid && originalGrid)} // Only allow closing if there's an existing game
+        onBack={handleDifficultyBack}
       />
 
       {/* Completion Popup - Outside app container to avoid blur */}
@@ -536,6 +683,42 @@ function AppContent() {
           totalGamesPlayed={completionData.totalGamesPlayed}
           averageTime={completionData.averageTime}
         />
+      )}
+
+      {/* Game Mode Selector - Outside app container to avoid blur */}
+      <GameModeSelector
+        isOpen={showGameModeSelector}
+        onClose={() => setShowGameModeSelector(false)}
+        onSelectMode={handleGameModeSelect}
+      />
+
+      {/* Room Creation Popup - Outside app container to avoid blur */}
+      <RoomCreationPopup
+        isOpen={showRoomCreationPopup}
+        onClose={handleRoomCreationClose}
+        onCreateRoom={handleCreateRoom}
+        roomCode={multiplayerGame.roomCode}
+        isCreating={multiplayerGame.isCreatingRoom}
+        canClose={!multiplayerGame.isGameJoined}
+      />
+
+      {/* Room Joining Popup - Outside app container to avoid blur */}
+      <RoomJoiningPopup
+        isOpen={showRoomJoiningPopup}
+        onClose={handleRoomJoiningClose}
+        onJoinRoom={handleJoinRoom}
+        isJoining={multiplayerGame.isJoiningRoom}
+        error={multiplayerGame.joinError}
+      />
+
+      {/* Multiplayer Countdown Overlay */}
+      {multiplayerGame.countdown && multiplayerGame.countdown > 0 && (
+        <div className="countdown-overlay">
+          <div className="countdown-content">
+            <div className="countdown-number">{multiplayerGame.countdown}</div>
+            <div className="countdown-text">Game starting in...</div>
+          </div>
+        </div>
       )}
     </>
   );

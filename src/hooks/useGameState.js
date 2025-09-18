@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { parseGameFromUrl } from '../utils/sudokuUtils';
+import { useGameContext } from '../contexts/GameContext';
 
 /**
  * Custom hook for managing game state persistence and initialization
@@ -39,8 +40,18 @@ export const useGameState = (
   setShowContinuePopup,
   showDifficultyPopup,
   setShowDifficultyPopup,
+  showGameModeSelector,
+  setShowGameModeSelector,
   initializeFallbackGame
 ) => {
+  
+  // Get game context with strategy pattern
+  const { gameModeManager } = useGameContext();
+  
+  // Get localStorage key based on game mode using strategy pattern
+  const getStorageKey = () => {
+    return gameModeManager.getStorageKey();
+  };
   
   // Validate game state structure
   const isValidGameState = (state) => {
@@ -120,15 +131,18 @@ export const useGameState = (
         notes: gameState.notes || Array(9).fill().map(() => Array(9).fill().map(() => [])),
         isPaused: gameState.isPaused || false,
         errorCells: gameState.errorCells || [],
+        // Add game mode data using strategy pattern
+        gameMode: gameModeManager.getCurrentMode()
       };
       
       // Test serialization before saving
       const serializedState = JSON.stringify(cleanGameState);
+      const storageKey = getStorageKey();
       
       // Check if serialized data is too large (localStorage has ~5-10MB limit)
       if (serializedState.length > 5 * 1024 * 1024) { // 5MB limit
         console.warn('Game state too large, clearing old data and retrying');
-        localStorage.removeItem('sudoku-game-state');
+        localStorage.removeItem(storageKey);
         // Try with minimal data
         const minimalState = {
           grid: cleanGameState.grid,
@@ -137,18 +151,20 @@ export const useGameState = (
           difficulty: cleanGameState.difficulty,
           gameStatus: cleanGameState.gameStatus,
           timer: cleanGameState.timer,
-          lives: cleanGameState.lives
+          lives: cleanGameState.lives,
+          gameMode: gameModeManager.getCurrentMode()
         };
-        localStorage.setItem('sudoku-game-state', JSON.stringify(minimalState));
+        localStorage.setItem(storageKey, JSON.stringify(minimalState));
         return;
       }
       
-      localStorage.setItem('sudoku-game-state', serializedState);
+      localStorage.setItem(storageKey, serializedState);
     } catch (error) {
       console.error('Failed to save game state:', error);
       // Try to clear localStorage if it's corrupted
       try {
-        localStorage.removeItem('sudoku-game-state');
+        const storageKey = getStorageKey();
+        localStorage.removeItem(storageKey);
         console.log('Cleared corrupted localStorage, game will continue without saving');
       } catch (clearError) {
         console.error('Failed to clear localStorage:', clearError);
@@ -159,7 +175,8 @@ export const useGameState = (
   // Load game state from localStorage with robust error handling
   const loadGameState = () => {
     try {
-      const savedState = localStorage.getItem('sudoku-game-state');
+      const storageKey = getStorageKey();
+      const savedState = localStorage.getItem(storageKey);
       if (!savedState) {
         return null;
       }
@@ -169,7 +186,7 @@ export const useGameState = (
       // Validate the loaded state has required properties
       if (!isValidGameState(parsedState)) {
         console.warn('Invalid game state detected, clearing localStorage');
-        localStorage.removeItem('sudoku-game-state');
+        localStorage.removeItem(storageKey);
         return null;
       }
 
@@ -178,7 +195,8 @@ export const useGameState = (
       console.error('Failed to load game state, clearing corrupted data:', error);
       // Clear corrupted data
       try {
-        localStorage.removeItem('sudoku-game-state');
+        const storageKey = getStorageKey();
+        localStorage.removeItem(storageKey);
       } catch (clearError) {
         console.error('Failed to clear corrupted localStorage:', clearError);
       }
@@ -186,9 +204,79 @@ export const useGameState = (
     }
   };
 
+  // Initialize multiplayer game with revealed cells
+  const initializeMultiplayerGame = async (gameRoomData) => {
+    try {
+      if (!gameRoomData || !gameRoomData.revealedCells) {
+        console.error('Invalid multiplayer game data');
+        return;
+      }
+
+      // Load easy puzzle data (this would be implemented based on your puzzle database)
+      // For now, we'll use a placeholder - you'll need to implement this based on your easy.js database
+      const easyPuzzle = await loadEasyPuzzle(gameRoomData.boardId);
+      
+      if (!easyPuzzle) {
+        console.error('Failed to load easy puzzle for multiplayer');
+        return;
+      }
+
+      // Create grid with revealed cells
+      const grid = easyPuzzle.grid.map(row => [...row]);
+      const originalGrid = easyPuzzle.grid.map(row => [...row]);
+      
+      // Apply revealed cells
+      gameRoomData.revealedCells.forEach(cellIndex => {
+        const row = Math.floor(cellIndex / 9);
+        const col = cellIndex % 9;
+        if (row < 9 && col < 9) {
+          grid[row][col] = easyPuzzle.solution[row][col];
+        }
+      });
+
+      // Set up the game state
+      setGrid(grid);
+      setOriginalGrid(originalGrid);
+      setSolution(easyPuzzle.solution);
+      setSelectedCell(null);
+      setSelectedNumber(null);
+      setDifficulty('easy');
+      setGameStatus('playing');
+      setLives(3); // Hearts in multiplayer
+      setHintLevel('medium');
+      setIsNotesMode(false);
+      setNotes(Array(9).fill().map(() => Array(9).fill().map(() => [])));
+      setErrorCells([]);
+      setIsPaused(false);
+      setTimer(0);
+      setIsTimerRunning(false); // Timer will be controlled by multiplayer logic
+      
+    } catch (error) {
+      console.error('Failed to initialize multiplayer game:', error);
+    }
+  };
+
+  // Placeholder function to load easy puzzle - implement based on your database
+  const loadEasyPuzzle = async (boardId) => {
+    // This should load a puzzle from your easy.js database
+    // For now, return a placeholder structure
+    console.log('Loading easy puzzle for boardId:', boardId);
+    
+    // You'll need to implement this based on your game_database/easy.js structure
+    // For now, return null to indicate it needs implementation
+    return null;
+  };
+
   // Initialize game with comprehensive error handling
   const initializeGame = async () => {
     try {
+      // Handle multiplayer mode initialization using strategy pattern
+      if (gameModeManager.isMultiplayerMode()) {
+        // For multiplayer, we don't show continue popup or difficulty popup
+        // The game will be initialized when the multiplayer context provides game data
+        return;
+      }
+
       // First, check for URL game parameter
       const urlGameState = parseGameFromUrl();
       if (urlGameState) {
@@ -253,8 +341,8 @@ export const useGameState = (
           initializeFallbackGame();
         }
       } else {
-        // No saved game, show difficulty popup
-        setShowDifficultyPopup(true);
+        // No saved game, show game mode selector
+        setShowGameModeSelector(true);
       }
     } catch (error) {
       console.error('Game initialization failed, using fallback:', error);
@@ -289,6 +377,9 @@ export const useGameState = (
     saveGameState,
     loadGameState,
     initializeGame,
-    isValidGameState
+    initializeMultiplayerGame,
+    loadEasyPuzzle,
+    isValidGameState,
+    getStorageKey
   };
 };

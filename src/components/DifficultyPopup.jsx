@@ -1,5 +1,5 @@
 
-const DifficultyPopup = ({ isOpen, onClose, onSelectDifficulty, currentDifficulty, canClose = true }) => {
+const DifficultyPopup = ({ isOpen, onClose, onSelectDifficulty, currentDifficulty, canClose = true, onBack }) => {
   if (!isOpen) return null;
 
   const difficulties = [
@@ -27,6 +27,12 @@ const DifficultyPopup = ({ isOpen, onClose, onSelectDifficulty, currentDifficult
     }
   };
 
+  const handleBackClick = () => {
+    if (onBack) {
+      onBack();
+    }
+  };
+
   return (
     <div className="popup-overlay" onClick={handleOverlayClick}>
       <div className="difficulty-popup">
@@ -51,6 +57,11 @@ const DifficultyPopup = ({ isOpen, onClose, onSelectDifficulty, currentDifficult
         </div>
         
         <div className="popup-footer">
+          {onBack && (
+            <button className="btn btn-secondary" onClick={handleBackClick}>
+              Back
+            </button>
+          )}
           {canClose && (
             <button className="btn btn-secondary" onClick={handleCloseClick}>
               Cancel

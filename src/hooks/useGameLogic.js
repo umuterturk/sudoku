@@ -1,6 +1,7 @@
+import { useEffect } from 'react';
 import { isGridComplete, isGridValid, getCompletedSections, addGameRecord, getDifficultyRecord } from '../utils/sudokuUtils';
 import { playCompletionSound, playMultipleCompletionSound, createCompletionSound, createPerfectGameSound, createDigitCompletionSound } from '../utils/audioUtils';
-import { trackGameCompleted, trackGameOver } from '../utils/analytics';
+import { useGameContext } from '../contexts/GameContext';
 
 /**
  * Custom hook for managing core game logic
@@ -56,6 +57,8 @@ export const useGameLogic = (
   setShowCompletionPopup,
   initializeFallbackGame
 ) => {
+  // Get game context with strategy pattern
+  const { gameModeManager } = useGameContext();
 
   // Function to check if a digit has been completed (all 9 instances placed)
   const checkDigitCompletion = (grid, digit) => {
@@ -68,6 +71,11 @@ export const useGameLogic = (
       }
     }
     return count === 9; // Return true if all 9 instances are placed
+  };
+
+  // Calculate progress using strategy pattern
+  const calculateProgress = (currentGrid, originalGrid) => {
+    return gameModeManager.calculateProgress(currentGrid, originalGrid);
   };
 
   const handleDigitSelect = (digit) => {
@@ -165,7 +173,18 @@ export const useGameLogic = (
             setIsTimerRunning(false);
             // Track game over event
             trackGameOver(difficulty, timer);
+            
+            // Handle game over using strategy pattern
+            const gameOverResult = gameModeManager.handleGameOver(difficulty, timer);
+            if (gameOverResult.showGameOver) {
+              // Handle game over UI if needed
+            }
           }
+          
+          // Update progress when losing a heart using strategy pattern
+          const progress = calculateProgress(newGrid, originalGrid);
+          gameModeManager.updateProgress(progress, newLives, true);
+          
           return newLives;
         });
       } else if (digit !== 0) {
@@ -180,6 +199,10 @@ export const useGameLogic = (
           }
           return prev;
         });
+        
+        // Update progress for correct moves using strategy pattern
+        const progress = calculateProgress(newGrid, originalGrid);
+        gameModeManager.updateProgress(progress, lives, false);
         
         // Check for completed sections (only if it's a correct move)
         const completedSections = getCompletedSections(oldGrid, newGrid, row, col);
@@ -233,40 +256,48 @@ export const useGameLogic = (
           // Track game completion
           trackGameCompleted(difficulty, timer, lives);
           
-          // Record the completion and show popup
-          const recordData = addGameRecord(difficulty, timer);
-          
-          // Play completion sound (only if sound is enabled)
-          if (isSoundEnabled) {
-            // Use special sound for perfect games (no mistakes) or new records
-            const isPerfectGame = lives === 3;
-            const isNewRecord = recordData?.isNewRecord || false;
-            
-            if (isPerfectGame || isNewRecord) {
-              createPerfectGameSound();
-            } else {
-              createCompletionSound();
-            }
-          }
-          const difficultyRecord = getDifficultyRecord(difficulty);
-          
-          setCompletionData({
-            difficulty,
-            timer,
-            lives,
-            isNewRecord: recordData?.isNewRecord || false,
-            bestTime: recordData?.bestTime || difficultyRecord.bestTime,
-            totalGamesPlayed: recordData?.totalGames || difficultyRecord.totalGames,
-            averageTime: recordData?.averageTime || difficultyRecord.averageTime
-          });
-          
-          // Clear saved game since it's completed
-          localStorage.removeItem('sudoku-game-state');
-          
-          // Show completion popup after a brief delay for better UX
-          setTimeout(() => {
+          // Handle game completion using strategy pattern
+          const completionResult = gameModeManager.handleGameCompletion(lives, timer);
+          if (completionResult.showCompletionPopup) {
+            setCompletionData(completionResult.completionData);
             setShowCompletionPopup(true);
-          }, 500);
+          } else {
+            // Single player game completion logic
+            // Record the completion and show popup
+            const recordData = addGameRecord(difficulty, timer);
+            
+            // Play completion sound (only if sound is enabled)
+            if (isSoundEnabled) {
+              // Use special sound for perfect games (no mistakes) or new records
+              const isPerfectGame = lives === 3;
+              const isNewRecord = recordData?.isNewRecord || false;
+              
+              if (isPerfectGame || isNewRecord) {
+                createPerfectGameSound();
+              } else {
+                createCompletionSound();
+              }
+            }
+            const difficultyRecord = getDifficultyRecord(difficulty);
+            
+            setCompletionData({
+              difficulty,
+              timer,
+              lives,
+              isNewRecord: recordData?.isNewRecord || false,
+              bestTime: recordData?.bestTime || difficultyRecord.bestTime,
+              totalGamesPlayed: recordData?.totalGames || difficultyRecord.totalGames,
+              averageTime: recordData?.averageTime || difficultyRecord.averageTime
+            });
+            
+            // Clear saved game since it's completed
+            localStorage.removeItem('sudoku-game-state');
+            
+            // Show completion popup after a brief delay for better UX
+            setTimeout(() => {
+              setShowCompletionPopup(true);
+            }, 500);
+          }
         } else {
           setGameStatus('error');
         }
@@ -368,12 +399,16 @@ export const useGameLogic = (
     }
   };
 
+  // Opponent disconnection is now handled by the multiplayer strategy
+  // No need for this logic in the main game logic hook
+
   return {
     handleDigitSelect,
     handleCellClick,
     resetGame,
     handleNotesToggle,
     handlePauseToggle,
-    checkDigitCompletion
+    checkDigitCompletion,
+    calculateProgress
   };
 };

@@ -26,17 +26,18 @@ export const usePopupHandlers = (
   setIsTimerRunning,
   setShareMessage,
   setCompletionData,
-  startNewGame
+  startNewGame,
+  setShowGameModeSelector
 ) => {
 
   const handleNewGameClick = () => {
-    setShowDifficultyPopup(true);
+    setShowGameModeSelector(true);
   };
 
   const handleGameOverNewGame = () => {
-    // Clear game over state first, then show difficulty popup
+    // Clear game over state first, then show game mode selector
     setGameStatus('playing');
-    setShowDifficultyPopup(true);
+    setShowGameModeSelector(true);
   };
 
   const handleDifficultySelect = (selectedDifficulty) => {
@@ -56,7 +57,7 @@ export const usePopupHandlers = (
 
   const handleContinueNewGame = () => {
     setShowContinuePopup(false);
-    setShowDifficultyPopup(true);
+    setShowGameModeSelector(true);
     // Keep game paused until new game is actually started
     setIsPaused(true);
     setIsTimerRunning(false);
