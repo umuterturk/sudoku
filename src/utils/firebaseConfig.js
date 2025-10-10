@@ -1,18 +1,17 @@
 // Firebase configuration for multiplayer Sudoku
 import { initializeApp } from 'firebase/app';
 import { getFirestore, connectFirestoreEmulator } from 'firebase/firestore';
-import { devFirebaseConfig } from '../config/firebase.dev.js';
 
 // Firebase configuration using environment variables with dev fallback
 // Note: GitHub Actions should have these set via secrets
 const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || (import.meta.env.DEV ? devFirebaseConfig?.apiKey : undefined),
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || (import.meta.env.DEV ? devFirebaseConfig?.authDomain : undefined),
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || (import.meta.env.DEV ? devFirebaseConfig?.projectId : undefined),
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || (import.meta.env.DEV ? devFirebaseConfig?.storageBucket : undefined),
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || (import.meta.env.DEV ? devFirebaseConfig?.messagingSenderId : undefined),
-  appId: import.meta.env.VITE_FIREBASE_APP_ID || (import.meta.env.DEV ? devFirebaseConfig?.appId : undefined),
-  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID || (import.meta.env.DEV ? devFirebaseConfig?.measurementId : undefined)
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || import.meta.env.DEV,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || import.meta.env.DEV,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || import.meta.env.DEV,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || import.meta.env.DEV,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || import.meta.env.DEV,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID || import.meta.env.DEV,
+  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID || import.meta.env.DEV
 };
 
 // Validate configuration
