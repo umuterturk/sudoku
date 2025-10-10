@@ -198,6 +198,37 @@
   color: #a9a9a9;
 }
 
+.timer.multiplayer-timer {
+  color: #667eea;
+  font-weight: 700;
+}
+
+.timer-label {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: #6b7280;
+  margin-top: 0.125rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.25rem;
+}
+
+.sync-indicator {
+  font-size: 0.75rem;
+  opacity: 0.7;
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 0.7;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
 .pause-button {
   background: none;
   border: none;
@@ -1980,6 +2011,24 @@
   font-size: 1.5rem;
   font-weight: 500;
   opacity: 0.9;
+  margin-bottom: 1rem;
+}
+
+.countdown-progress {
+  width: 200px;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 2px;
+  overflow: hidden;
+  margin: 0 auto;
+}
+
+.countdown-progress-bar {
+  height: 100%;
+  background: linear-gradient(90deg, #667eea, #764ba2);
+  border-radius: 2px;
+  transition: width 1s ease-in-out;
+  box-shadow: 0 0 10px rgba(102, 126, 234, 0.5);
 }
 
 @keyframes fadeIn {
@@ -2008,5 +2057,14 @@
   50% {
     transform: scale(1.1);
     color: #4299e1;
+  }
+}
+
+@keyframes spin {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
   }
 }

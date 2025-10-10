@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useMultiplayerContext } from '../contexts/MultiplayerContext';
 import { useGameContext } from '../contexts/GameContext';
 import { MULTIPLAYER_CONFIG } from '../config/firebase.prod';
+import { loadPuzzleDatabase } from '../utils/sudokuUtils';
 
 /**
  * Custom hook for managing multiplayer game logic
@@ -28,7 +29,7 @@ export const useMultiplayerGame = () => {
   } = useMultiplayerContext();
 
   // Get game context for initialization
-  const { gameModeManager } = useGameContext();
+  const { gameModeManager, setShowGameModeSelector, setShowRoomCreationPopup } = useGameContext();
 
   // Local state for multiplayer game
   const [isCreatingRoom, setIsCreatingRoom] = useState(false);
@@ -44,10 +45,11 @@ export const useMultiplayerGame = () => {
   const gameTimerRef = useRef(null);
 
   // Generate a random board ID for easy difficulty
-  const generateBoardId = useCallback(() => {
+  const generateBoardId = useCallback(async () => {
     // This will be used to select a random easy puzzle
-    // For now, we'll use a simple random number
-    return Math.floor(Math.random() * 1000).toString();
+    // Get the actual size of the easy puzzle database
+    const puzzleDatabase = await loadPuzzleDatabase('easy');
+    return Math.floor(Math.random() * puzzleDatabase.length).toString();
   }, []);
 
   // Create a new game room
@@ -56,10 +58,12 @@ export const useMultiplayerGame = () => {
     setCreateError(null);
     
     try {
-      const boardId = generateBoardId();
+      const boardId = await generateBoardId();
       const newRoomCode = await createGameRoom(boardId, 'easy');
       setRoomCode(newRoomCode);
       setIsMultiplayerMode(true);
+      
+      console.log('🎮 Game room created successfully:', newRoomCode);
     } catch (error) {
       console.error('Failed to create room:', error);
       setCreateError(error.message || 'Failed to create game room');
@@ -67,6 +71,30 @@ export const useMultiplayerGame = () => {
       setIsCreatingRoom(false);
     }
   }, [createGameRoom, generateBoardId, setIsMultiplayerMode]);
+
+  // Start 5-second countdown before game begins
+  const startGameCountdown = useCallback(() => {
+    let timeLeft = 5;
+    setCountdown(timeLeft);
+    
+    console.log('⏰ Starting 5-second countdown...');
+    
+    countdownRef.current = setInterval(() => {
+      timeLeft -= 1;
+      setCountdown(timeLeft);
+      
+      if (timeLeft > 0) {
+        console.log(`⏰ Game starting in ${timeLeft}...`);
+      } else {
+        console.log('🚀 Game starting now!');
+        clearInterval(countdownRef.current);
+        setCountdown(null);
+        // Close the game mode selector and room creation popup when countdown ends
+        setShowGameModeSelector(false);
+        setShowRoomCreationPopup(false);
+      }
+    }, 1000);
+  }, [setShowGameModeSelector, setShowRoomCreationPopup]);
 
   // Join an existing game room
   const handleJoinRoom = useCallback(async (code) => {
@@ -78,8 +106,11 @@ export const useMultiplayerGame = () => {
       setRoomCode(code);
       setIsMultiplayerMode(true);
       
+      console.log('🎮 Successfully joined game room:', code);
+      
       // Start countdown if game is about to start
       if (gameData.gameState === MULTIPLAYER_CONFIG.GAME_STATES.STARTED) {
+        console.log('⏰ Game starting, beginning countdown...');
         startGameCountdown();
       }
     } catch (error) {
@@ -88,34 +119,23 @@ export const useMultiplayerGame = () => {
     } finally {
       setIsJoiningRoom(false);
     }
-  }, [joinGameRoom, setIsMultiplayerMode]);
-
-  // Start 5-second countdown before game begins
-  const startGameCountdown = useCallback(() => {
-    let timeLeft = 5;
-    setCountdown(timeLeft);
-    
-    countdownRef.current = setInterval(() => {
-      timeLeft -= 1;
-      setCountdown(timeLeft);
-      
-      if (timeLeft <= 0) {
-        clearInterval(countdownRef.current);
-        setCountdown(null);
-      }
-    }, 1000);
-  }, []);
+  }, [joinGameRoom, setIsMultiplayerMode, startGameCountdown]);
 
   // Start game timer
   const startGameTimer = useCallback(() => {
     if (!gameStartTime || !gameEndTime) return;
     
+    console.log('⏱️ Starting multiplayer game timer (10 minutes)');
+    
     const updateTimer = () => {
+      // Use server time for consistent timer across clients
       const now = new Date();
-      const remaining = Math.max(0, gameEndTime.getTime() - now.getTime());
+      const endTime = gameEndTime instanceof Date ? gameEndTime : gameEndTime.toDate();
+      const remaining = Math.max(0, endTime.getTime() - now.getTime());
       setGameTimeRemaining(remaining);
       
       if (remaining <= 0) {
+        console.log('⏰ Game time expired!');
         clearInterval(gameTimerRef.current);
         endGame('timeout');
       }
@@ -142,6 +162,7 @@ export const useMultiplayerGame = () => {
     
     try {
       await updatePlayerProgress(progress, heartsLeft, lostHeart);
+      console.log(`📊 Progress updated: ${progress}%, Hearts: ${heartsLeft}, Lost Heart: ${lostHeart}`);
     } catch (error) {
       console.error('Failed to update progress:', error);
     }
@@ -152,6 +173,7 @@ export const useMultiplayerGame = () => {
     if (!isGameJoined) return;
     
     try {
+      console.log('🏆 Game completed! Final progress:', finalProgress);
       await updatePlayerProgress(finalProgress, 0, false);
       await endGame('completed');
     } catch (error) {
@@ -166,10 +188,12 @@ export const useMultiplayerGame = () => {
     }
     
     try {
+      console.log(`💔 Heart lost! Progress: ${progress}%, Hearts remaining: ${heartsLeft}`);
       await updatePlayerProgress(progress, heartsLeft, true);
       
       // End game if no hearts left
       if (heartsLeft <= 0) {
+        console.log('💀 All hearts lost! Game over.');
         await endGame('hearts_lost');
       }
     } catch (error) {
@@ -180,12 +204,14 @@ export const useMultiplayerGame = () => {
   // Exit the current game
   const handleExitGame = useCallback(async () => {
     try {
+      console.log('🚪 Exiting multiplayer game...');
       await exitGame();
       setRoomCode('');
       setCountdown(null);
       stopGameTimer();
       setJoinError(null);
       setCreateError(null);
+      console.log('✅ Successfully exited multiplayer game');
     } catch (error) {
       console.error('Failed to exit game:', error);
     }
@@ -206,14 +232,16 @@ export const useMultiplayerGame = () => {
   const getCurrentPlayerData = useCallback(() => {
     if (!gameRoomData) return null;
     
-    return isGameCreator ? gameRoomData.creator : gameRoomData.challenger;
+    const playerData = isGameCreator ? gameRoomData.creator : gameRoomData.challenger;
+    return playerData || null;
   }, [gameRoomData, isGameCreator]);
 
   // Get opponent's progress data
   const getOpponentData = useCallback(() => {
     if (!gameRoomData) return null;
     
-    return isGameCreator ? gameRoomData.challenger : gameRoomData.creator;
+    const opponentData = isGameCreator ? gameRoomData.challenger : gameRoomData.creator;
+    return opponentData || null;
   }, [gameRoomData, isGameCreator]);
 
   // Check if game is ready to start

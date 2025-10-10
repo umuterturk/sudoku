@@ -346,7 +346,9 @@ function AppContent() {
 
   const handleCreateRoom = async () => {
     try {
+      console.log('🎮 Creating new multiplayer room...');
       await multiplayerGame.handleCreateRoom();
+      console.log('✅ Room created successfully');
     } catch (error) {
       console.error('Failed to create room:', error);
     }
@@ -354,22 +356,30 @@ function AppContent() {
 
   const handleJoinRoom = async (roomCode) => {
     try {
+      console.log('🔗 Joining room:', roomCode);
       await multiplayerGame.handleJoinRoom(roomCode);
       setShowRoomJoiningPopup(false);
+      setUrlRoomCode(''); // Clear the URL room code after successful join
+      console.log('✅ Successfully joined room');
     } catch (error) {
       console.error('Failed to join room:', error);
     }
   };
 
   const handleRoomCreationClose = () => {
+    console.log('🚪 Closing room creation popup');
     setShowRoomCreationPopup(false);
     if (!multiplayerGame.isGameJoined) {
+      console.log('🔄 Returning to game mode selector');
       setShowGameModeSelector(true);
+    } else {
+      console.log('🎮 Game is joined, staying in multiplayer mode');
     }
   };
 
   const handleRoomJoiningClose = () => {
     setShowRoomJoiningPopup(false);
+    setUrlRoomCode(''); // Clear the URL room code
     setShowGameModeSelector(true);
   };
 
@@ -410,6 +420,27 @@ function AppContent() {
     setupCheatCodes(idclipFn);
     return () => cleanupCheatCodes();
   }, [idclipFn]);
+
+  // Handle URL parameters for room joining
+  const [urlRoomCode, setUrlRoomCode] = useState('');
+  
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const roomCode = urlParams.get('room');
+    
+    if (roomCode) {
+      console.log('🔗 Room code found in URL:', roomCode);
+      setUrlRoomCode(roomCode);
+      // Switch to multiplayer mode and show room joining popup
+      switchGameMode('multiplayer');
+      setShowRoomJoiningPopup(true);
+      
+      // Clean up the URL by removing the room parameter
+      const newUrl = new URL(window.location);
+      newUrl.searchParams.delete('room');
+      window.history.replaceState({}, '', newUrl);
+    }
+  }, [switchGameMode]);
 
   // Timer effect
   useEffect(() => {
@@ -709,14 +740,27 @@ function AppContent() {
         onJoinRoom={handleJoinRoom}
         isJoining={multiplayerGame.isJoiningRoom}
         error={multiplayerGame.joinError}
+        initialRoomCode={urlRoomCode}
       />
 
       {/* Multiplayer Countdown Overlay */}
       {multiplayerGame.countdown && multiplayerGame.countdown > 0 && (
         <div className="countdown-overlay">
           <div className="countdown-content">
-            <div className="countdown-number">{multiplayerGame.countdown}</div>
-            <div className="countdown-text">Game starting in...</div>
+            <div className="countdown-number" key={multiplayerGame.countdown}>
+              {multiplayerGame.countdown}
+            </div>
+            <div className="countdown-text">
+              {multiplayerGame.countdown === 1 ? 'Game starting now!' : 'Game starting in...'}
+            </div>
+            <div className="countdown-progress">
+              <div 
+                className="countdown-progress-bar" 
+                style={{ 
+                  width: `${((5 - multiplayerGame.countdown) / 5) * 100}%` 
+                }}
+              />
+            </div>
           </div>
         </div>
       )}

@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { generatePuzzle, loadPuzzleDatabase, getRandomAnimationPuzzles, preloadPuzzleDatabases } from '../utils/sudokuUtils';
+import { generatePuzzle, loadPuzzleDatabase, getRandomAnimationPuzzles, preloadPuzzleDatabases, stringToGrid } from '../utils/sudokuUtils';
 import { trackGameStarted } from '../utils/analytics';
 import { useGameContext } from '../contexts/GameContext';
 
@@ -161,17 +161,23 @@ export const useGameInitialization = (
       
       // Load the specific puzzle from the easy database (multiplayer uses easy difficulty)
       const puzzleDatabase = await loadPuzzleDatabase('easy');
-      const puzzleData = puzzleDatabase.find(p => p.id === boardId);
       
-      if (!puzzleData) {
-        throw new Error(`Puzzle with ID ${boardId} not found`);
+      // boardId is the index in the array (0-499 for easy puzzles)
+      const puzzleIndex = parseInt(boardId);
+      if (puzzleIndex < 0 || puzzleIndex >= puzzleDatabase.length) {
+        throw new Error(`Puzzle with ID ${boardId} not found (valid range: 0-${puzzleDatabase.length - 1})`);
       }
+      
+      const puzzleData = puzzleDatabase[puzzleIndex];
       
       setLoadingProgress(80);
       
-      // Create the puzzle with revealed cells
-      const puzzle = puzzleData.puzzle.map(row => [...row]);
-      const solution = puzzleData.solution.map(row => [...row]);
+      // Extract puzzle string, solution string, and rating from the array format
+      const [puzzleString, solutionString, rating] = puzzleData;
+      
+      // Convert the puzzle and solution strings to 9x9 grids
+      const puzzle = stringToGrid(puzzleString);
+      const solution = stringToGrid(solutionString);
       
       // Apply revealed cells to the puzzle
       revealedCells.forEach(cellIndex => {

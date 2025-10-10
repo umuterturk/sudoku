@@ -1,8 +1,19 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 
-const RoomJoiningPopup = ({ isOpen, onClose, onJoinRoom, isJoining, error, canClose = true }) => {
+const RoomJoiningPopup = ({ isOpen, onClose, onJoinRoom, isJoining, error, canClose = true, initialRoomCode = '' }) => {
   const [roomCode, setRoomCode] = useState('');
   const [inputError, setInputError] = useState('');
+
+  // Handle initial room code from URL
+  useEffect(() => {
+    if (isOpen && initialRoomCode && !roomCode) {
+      setRoomCode(initialRoomCode);
+      // Automatically attempt to join the room
+      setTimeout(() => {
+        onJoinRoom(initialRoomCode);
+      }, 100); // Small delay to ensure state is updated
+    }
+  }, [isOpen, initialRoomCode, roomCode, onJoinRoom]);
 
   if (!isOpen) return null;
 
@@ -127,8 +138,33 @@ const RoomJoiningPopup = ({ isOpen, onClose, onJoinRoom, isJoining, error, canCl
               <strong>How to join:</strong><br />
               1. Ask your friend for the room code<br />
               2. Enter it above and click "Join Room"<br />
-              3. Wait for the game to start!
+              3. Wait for the 5-second countdown to start!
             </div>
+            
+            {isJoining && (
+              <div style={{
+                marginTop: '1rem',
+                padding: '0.75rem',
+                background: 'rgba(102, 126, 234, 0.1)',
+                borderRadius: '6px',
+                border: '1px solid rgba(102, 126, 234, 0.2)',
+                fontSize: '0.85rem',
+                color: '#667eea',
+                textAlign: 'center'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
+                  <div style={{
+                    width: '16px',
+                    height: '16px',
+                    border: '2px solid #667eea',
+                    borderTop: '2px solid transparent',
+                    borderRadius: '50%',
+                    animation: 'spin 1s linear infinite'
+                  }} />
+                  Joining game room...
+                </div>
+              </div>
+            )}
           </div>
         </div>
         

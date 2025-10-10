@@ -2,7 +2,7 @@ import React from 'react';
 import { Menu, PlayArrow } from '@mui/icons-material';
 import { IconButton } from '@mui/material';
 import SudokuBoard from './SudokuBoard';
-import Timer from './Timer';
+import TimerFactory from './TimerFactory';
 import ControlPanel from './ControlPanel';
 import Hearts from './Hearts';
 import MultiplayerProgress from './MultiplayerProgress';
@@ -10,7 +10,7 @@ import { useGameContext } from '../contexts/GameContext';
 
 const GameContainer = ({ 
   // Injected components (dependency injection)
-  TimerComponent = Timer,
+  TimerComponent = TimerFactory,
   ControlPanelComponent = ControlPanel,
   
   // Event handlers
@@ -88,6 +88,10 @@ const GameContainer = ({
           gameStatus={gameStatus}
           isAnimating={isAnimating}
           onPauseToggle={onPauseToggle}
+          isMultiplayerMode={gameModeManager.isMultiplayerMode()}
+          gameStartTime={gameModeManager.getTimerProps().gameStartTime}
+          gameEndTime={gameModeManager.getTimerProps().gameEndTime}
+          gameState={gameModeManager.getTimerProps().gameState}
         />
         <Hearts lives={lives} isShaking={isShaking} />
         

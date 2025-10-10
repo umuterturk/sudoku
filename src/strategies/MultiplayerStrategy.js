@@ -114,6 +114,16 @@ export class MultiplayerStrategy extends GameModeStrategy {
 
   getTimerProps() {
     const { gameStartTime, gameEndTime, gameState } = this.multiplayerContext;
+    console.log('🕐 MultiplayerStrategy.getTimerProps() called with:', {
+      gameStartTime,
+      gameEndTime,
+      gameState,
+      hasGameStartTime: !!gameStartTime,
+      hasGameEndTime: !!gameEndTime,
+      gameStartTimeType: gameStartTime ? typeof gameStartTime : 'null',
+      gameEndTimeType: gameEndTime ? typeof gameEndTime : 'null'
+    });
+    
     return {
       isMultiplayerMode: true,
       gameStartTime,

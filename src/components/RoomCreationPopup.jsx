@@ -24,15 +24,18 @@ const RoomCreationPopup = ({ isOpen, onClose, onCreateRoom, roomCode, isCreating
 
   const handleCopyCode = async () => {
     if (roomCode) {
+      // Create a URL with the room code as a parameter
+      const shareUrl = `${window.location.origin}${window.location.pathname}?room=${roomCode}`;
+      
       try {
-        await navigator.clipboard.writeText(roomCode);
+        await navigator.clipboard.writeText(shareUrl);
         setCopied(true);
         setTimeout(() => setCopied(false), 2000);
       } catch (err) {
-        console.error('Failed to copy room code:', err);
+        console.error('Failed to copy URL:', err);
         // Fallback for older browsers
         const textArea = document.createElement('textarea');
-        textArea.value = roomCode;
+        textArea.value = shareUrl;
         document.body.appendChild(textArea);
         textArea.select();
         document.execCommand('copy');
@@ -44,21 +47,45 @@ const RoomCreationPopup = ({ isOpen, onClose, onCreateRoom, roomCode, isCreating
   };
 
   const handleShare = async () => {
-    if (roomCode && navigator.share) {
+    if (!roomCode) return;
+    
+    // Create a URL with the room code as a parameter
+    const shareUrl = `${window.location.origin}${window.location.pathname}?room=${roomCode}`;
+    
+    if (navigator.share) {
       try {
         await navigator.share({
           title: 'Join my Sudoku game!',
           text: `Join my Sudoku multiplayer game! Room code: ${roomCode}`,
-          url: window.location.href
+          url: shareUrl
         });
       } catch (err) {
         console.error('Error sharing:', err);
-        // Fallback to copy
-        handleCopyCode();
+        // Fallback to copy URL
+        await copyToClipboard(shareUrl);
       }
     } else {
-      // Fallback to copy
-      handleCopyCode();
+      // Fallback to copy URL
+      await copyToClipboard(shareUrl);
+    }
+  };
+
+  const copyToClipboard = async (text) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      console.error('Failed to copy to clipboard:', err);
+      // Fallback for older browsers
+      const textArea = document.createElement('textarea');
+      textArea.value = text;
+      document.body.appendChild(textArea);
+      textArea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textArea);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
     }
   };
 
@@ -98,7 +125,7 @@ const RoomCreationPopup = ({ isOpen, onClose, onCreateRoom, roomCode, isCreating
               <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>🎉</div>
               <h3 style={{ margin: '0 0 1rem 0', color: '#2d3748' }}>Room Created!</h3>
               <p style={{ color: '#666', marginBottom: '1.5rem' }}>
-                Share this room code with your friend:
+                Share this game URL with your friend:
               </p>
               
               <div style={{ 
@@ -130,7 +157,7 @@ const RoomCreationPopup = ({ isOpen, onClose, onCreateRoom, roomCode, isCreating
                     borderRadius: '4px',
                     color: copied ? '#48bb78' : '#666'
                   }}
-                  title="Copy room code"
+                  title="Copy game URL"
                 >
                   <ContentCopy />
                 </button>
@@ -142,7 +169,7 @@ const RoomCreationPopup = ({ isOpen, onClose, onCreateRoom, roomCode, isCreating
                   onClick={handleCopyCode}
                   style={{ flex: 1 }}
                 >
-                  {copied ? 'Copied!' : 'Copy Code'}
+                  {copied ? 'Copied!' : 'Copy URL'}
                 </button>
                 <button 
                   className="btn btn-primary" 
@@ -163,6 +190,18 @@ const RoomCreationPopup = ({ isOpen, onClose, onCreateRoom, roomCode, isCreating
                 Waiting for your friend to join...<br />
                 The game will start automatically when they enter the room code.
               </p>
+              
+              <div style={{
+                marginTop: '1rem',
+                padding: '0.75rem',
+                background: 'rgba(102, 126, 234, 0.1)',
+                borderRadius: '6px',
+                border: '1px solid rgba(102, 126, 234, 0.2)',
+                fontSize: '0.85rem',
+                color: '#667eea'
+              }}>
+                <strong>💡 Tip:</strong> Share the game URL with your friend via text, email, or social media. They can click the link to automatically join your game!
+              </div>
             </div>
           )}
         </div>
