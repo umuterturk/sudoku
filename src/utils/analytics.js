@@ -138,6 +138,24 @@ export const trackFlightModeToggle = (enabled) => {
   });
 };
 
+// Track multiplayer game creation
+export const trackMultiplayerGameCreate = (roomId) => {
+  trackEvent('multiplayer_game_create', {
+    room_id: roomId,
+    event_label: `Created multiplayer room ${roomId}`,
+    value: 1
+  });
+};
+
+// Track multiplayer game start
+export const trackMultiplayerGameStart = (roomId) => {
+  trackEvent('multiplayer_game_start', {
+    room_id: roomId,
+    event_label: `Started multiplayer game in room ${roomId}`,
+    value: 1
+  });
+};
+
 export default {
   initGA,
   trackPageView,
@@ -146,5 +164,7 @@ export default {
   trackGameCompleted,
   trackGameOver,
   trackHintUsed,
-  trackFlightModeToggle
+  trackFlightModeToggle,
+  trackMultiplayerGameCreate,
+  trackMultiplayerGameStart
 };

@@ -11,7 +11,7 @@ const ContinueGamePopup = React.lazy(() => import('./components/ContinueGamePopu
 const CompletionPopup = React.lazy(() => import('./components/CompletionPopup'));
 import { generatePuzzle, isGridComplete, isGridValid, loadPuzzleDatabase, enableFlightMode, isFlightModeEnabled, isFlightModeEnabledSync, disableFlightMode, refreshFlightModeCacheIfNeeded, getRandomAnimationPuzzles, parseGameFromUrl, generateShareableUrl, addGameRecord, getDifficultyRecord, getCompletedSections, findCellsWithOnePossibility, idclipCheat } from './utils/sudokuUtils';
 import { playCompletionSound, playMultipleCompletionSound, createCompletionSound, createPerfectGameSound, createHintSound, createDigitCompletionSound } from './utils/audioUtils';
-import { initGA, trackPageView, trackGameStarted, trackGameCompleted, trackGameOver, trackHintUsed, trackFlightModeToggle } from './utils/analytics';
+import { initGA, trackPageView, trackGameStarted, trackGameCompleted, trackGameOver, trackHintUsed, trackFlightModeToggle, trackMultiplayerGameCreate, trackMultiplayerGameStart } from './utils/analytics';
 import { 
   createGameRoom, 
   joinGameRoom, 
@@ -1981,6 +1981,9 @@ function App() {
       
       const { roomId, roomData } = await createGameRoom('Player 1');
       
+      // Track multiplayer game creation
+      trackMultiplayerGameCreate(roomId);
+      
       // Separate room metadata from game content
       const { gameBoard, solution, ...roomMetadata } = roomData;
       setMultiplayerRoom(roomMetadata);
@@ -2025,6 +2028,9 @@ function App() {
       
       console.log('🚀 Starting multiplayer game...');
       await startGame(multiplayerRoom.roomId);
+      
+      // Track multiplayer game start
+      trackMultiplayerGameStart(multiplayerRoom.roomId);
       
     } catch (error) {
       console.error('Failed to start multiplayer game:', error);
