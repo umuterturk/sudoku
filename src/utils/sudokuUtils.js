@@ -184,7 +184,7 @@ export const generatePuzzle = (difficulty = 'medium', isMultiplayer = false) => 
     
     // For easy mode, reveal additional cells to make it more accessible
     if (difficulty === 'easy') {
-      const cellCount = isMultiplayer ? 7 : 5;
+      const cellCount = isMultiplayer ? 10 : 5;
       puzzle = revealAdditionalCells(puzzle, solution, cellCount, isMultiplayer);
       console.log(`🌟 Easy mode: revealed ${cellCount} additional cells for better accessibility${isMultiplayer ? ' (multiplayer with strategic selection)' : ''}`);
     }
