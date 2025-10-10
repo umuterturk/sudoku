@@ -1,266 +1,29 @@
 // Sudoku utility functions
-import persistentCache from './persistentCache.js';
+import { puzzles as easyPuzzles } from '../game_database/easy.js';
+import { puzzles as mediumPuzzles } from '../game_database/medium.js';
+import { puzzles as hardPuzzles } from '../game_database/hard.js';
+import { puzzles as expertPuzzles } from '../game_database/expert.js';
 
-// Cache for loaded puzzle databases to avoid re-importing
-const puzzleCache = new Map();
+// Direct access to puzzle databases (no lazy loading)
+const puzzleDatabase = {
+  easy: easyPuzzles,
+  children: easyPuzzles, // Children mode uses easy puzzles as base
+  medium: mediumPuzzles,
+  hard: hardPuzzles,
+  expert: expertPuzzles
+};
 
-// Track loading states to prevent race conditions
-const loadingPromises = new Map();
+// Simple puzzle database loader (synchronous, no caching needed)
+export const loadPuzzleDatabase = (difficulty) => {
+  const puzzles = puzzleDatabase[difficulty] || puzzleDatabase.medium;
+  console.log(`✅ ${difficulty} puzzle database loaded (${puzzles.length} puzzles)`);
+  return puzzles;
+};
 
-// Cache management constants
-const MAX_CACHE_SIZE = 6; // Maximum number of difficulty levels to cache
-const CACHE_CLEANUP_THRESHOLD = 5; // Start cleanup when cache reaches this size
-
-// Enhanced puzzle database loader with persistent cache support
-export const loadPuzzleDatabase = async (difficulty) => {
-  // Check if already cached in memory
-  if (puzzleCache.has(difficulty)) {
-    console.log(`✅ ${difficulty} puzzle database loaded from memory cache`);
-    return puzzleCache.get(difficulty);
-  }
-
-  // Check if currently loading (prevent race conditions)
-  if (loadingPromises.has(difficulty)) {
-    console.log(`⏳ ${difficulty} puzzle database already loading, waiting...`);
-    return await loadingPromises.get(difficulty);
-  }
-
-  console.log(`🔄 Loading ${difficulty} puzzle database...`);
-
-  // Try to load from persistent cache first (for flight mode)
+// Get random puzzle grids for animation
+export const getRandomAnimationPuzzles = (difficulty, count = 20) => {
   try {
-    const cachedPuzzles = await persistentCache.getPuzzles(difficulty);
-    if (cachedPuzzles && cachedPuzzles.length > 0) {
-      console.log(`📱 ${difficulty} puzzles loaded from persistent cache (${cachedPuzzles.length} puzzles)`);
-      puzzleCache.set(difficulty, cachedPuzzles);
-      return cachedPuzzles;
-    }
-  } catch (error) {
-    console.warn(`Failed to load from persistent cache for ${difficulty}:`, error);
-  }
-
-  // Create loading promise
-  const loadingPromise = (async () => {
-    try {
-      let module;
-      switch (difficulty) {
-        case 'easy':
-          module = await import('../game_database/easy.js');
-          break;
-        case 'children':
-          // Children mode uses easy puzzles as base
-          module = await import('../game_database/easy.js');
-          break;
-        case 'medium':
-          module = await import('../game_database/medium.js');
-          break;
-        case 'hard':
-          module = await import('../game_database/hard.js');
-          break;
-        case 'expert':
-          module = await import('../game_database/expert.js');
-          break;
-        default:
-          module = await import('../game_database/medium.js');
-      }
-
-      const puzzles = module.puzzles;
-      
-      // Manage cache size to prevent unbounded growth
-      if (puzzleCache.size >= CACHE_CLEANUP_THRESHOLD) {
-        // Remove least recently used items (simple FIFO for now)
-        const keysToDelete = Array.from(puzzleCache.keys()).slice(0, puzzleCache.size - MAX_CACHE_SIZE + 1);
-        keysToDelete.forEach(key => puzzleCache.delete(key));
-        console.log(`🧹 Cache cleanup: removed ${keysToDelete.length} entries`);
-      }
-      
-      puzzleCache.set(difficulty, puzzles);
-      console.log(`✅ ${difficulty} puzzle database loaded successfully (${puzzles.length} puzzles)`);
-      
-      // Store in persistent cache if flight mode is enabled
-      try {
-        const isFlightMode = await persistentCache.isFlightModeCacheValid();
-        if (isFlightMode) {
-          await persistentCache.storePuzzles(difficulty, puzzles);
-          console.log(`💾 ${difficulty} puzzles stored in persistent cache for offline use`);
-        }
-      } catch (error) {
-        console.warn(`Failed to store ${difficulty} puzzles in persistent cache:`, error);
-      }
-      
-      return puzzles;
-    } catch (error) {
-      console.error(`Failed to load ${difficulty} puzzles:`, error);
-      // Standardized fallback: try medium, then empty array
-      if (difficulty !== 'medium' && puzzleCache.has('medium')) {
-        return puzzleCache.get('medium');
-      } else if (difficulty !== 'medium') {
-        // Try to load medium as fallback
-        try {
-          return await loadPuzzleDatabase('medium');
-        } catch (fallbackError) {
-          console.error('Fallback to medium also failed:', fallbackError);
-        }
-      }
-      return [];
-    } finally {
-      // Clean up loading promise
-      loadingPromises.delete(difficulty);
-    }
-  })();
-
-  // Store the loading promise
-  loadingPromises.set(difficulty, loadingPromise);
-  
-  return await loadingPromise;
-};
-
-
-// Preload multiple difficulties with progress tracking
-export const preloadPuzzleDatabases = async (difficulties = ['medium'], onProgress = null) => {
-  let completed = 0;
-  const total = difficulties.length;
-  
-  const promises = difficulties.map(async (diff) => {
-    try {
-      await loadPuzzleDatabase(diff);
-      completed++;
-      if (onProgress) {
-        onProgress({
-          difficulty: diff,
-          completed,
-          total,
-          progress: (completed / total) * 100,
-          success: true
-        });
-      }
-      console.log(`Preloaded ${diff} puzzle database (${completed}/${total})`);
-    } catch (error) {
-      completed++;
-      if (onProgress) {
-        onProgress({
-          difficulty: diff,
-          completed,
-          total,
-          progress: (completed / total) * 100,
-          success: false,
-          error
-        });
-      }
-      console.warn(`Failed to preload ${diff} puzzles:`, error);
-    }
-  });
-  
-  await Promise.all(promises);
-};
-
-// Flight mode: preload all difficulties for offline play with persistent storage
-export const enableFlightMode = async (onProgress = null) => {
-  const allDifficulties = ['easy', 'children', 'medium', 'hard', 'expert'];
-  console.log('🛩️ Enabling flight mode - preloading all puzzle databases...');
-  
-  try {
-    // Enable persistent cache first
-    await persistentCache.enableFlightMode();
-    
-    // Preload all puzzle databases
-    await preloadPuzzleDatabases(allDifficulties, onProgress);
-    console.log('✈️ Flight mode enabled! All puzzles cached persistently for offline play.');
-    
-    return true;
-  } catch (error) {
-    console.error('❌ Failed to enable flight mode:', error);
-    return false;
-  }
-};
-
-// Check if flight mode is enabled (async to check persistent cache)
-export const isFlightModeEnabled = async () => {
-  try {
-    // Check persistent cache first
-    const persistentValid = await persistentCache.isFlightModeCacheValid();
-    if (persistentValid) {
-      return true;
-    }
-    
-    // Fallback to localStorage for backward compatibility
-    const flightMode = localStorage.getItem('sudoku-flight-mode');
-    const timestamp = localStorage.getItem('sudoku-flight-mode-timestamp');
-    
-    if (flightMode === 'enabled' && timestamp) {
-      const enabledTime = parseInt(timestamp);
-      const twentyFourHours = 24 * 60 * 60 * 1000;
-      return (Date.now() - enabledTime) < twentyFourHours;
-    }
-    
-    return false;
-  } catch (error) {
-    console.warn('Error checking flight mode status:', error);
-    return false;
-  }
-};
-
-// Synchronous version for backward compatibility
-export const isFlightModeEnabledSync = () => {
-  const flightMode = localStorage.getItem('sudoku-flight-mode');
-  const timestamp = localStorage.getItem('sudoku-flight-mode-timestamp');
-  
-  if (flightMode === 'enabled' && timestamp) {
-    const enabledTime = parseInt(timestamp);
-    const twentyFourHours = 24 * 60 * 60 * 1000;
-    return (Date.now() - enabledTime) < twentyFourHours;
-  }
-  
-  return false;
-};
-
-// Disable flight mode and clear persistent cache
-export const disableFlightMode = async () => {
-  try {
-    await persistentCache.disableFlightMode();
-    console.log('🛬 Flight mode disabled and persistent cache cleared');
-  } catch (error) {
-    console.error('Error disabling flight mode:', error);
-    // Fallback to localStorage cleanup
-    localStorage.removeItem('sudoku-flight-mode');
-    localStorage.removeItem('sudoku-flight-mode-timestamp');
-    console.log('🛬 Flight mode disabled (localStorage only)');
-  }
-};
-
-// Auto-refresh flight mode cache if online and cache is stale
-export const refreshFlightModeCacheIfNeeded = async (onProgress = null) => {
-  try {
-    // Check if we need to refresh
-    const needsRefresh = await persistentCache.refreshCacheIfNeeded();
-    if (!needsRefresh) {
-      console.log('✅ Flight mode cache is fresh - no refresh needed');
-      return false;
-    }
-
-    console.log('🔄 Refreshing flight mode cache...');
-    const allDifficulties = ['easy', 'children', 'medium', 'hard', 'expert'];
-    
-    // Re-enable flight mode (this will update timestamp)
-    await persistentCache.enableFlightMode();
-    
-    // Preload all databases with fresh data
-    await preloadPuzzleDatabases(allDifficulties, onProgress);
-    
-    console.log('✅ Flight mode cache refreshed successfully');
-    return true;
-  } catch (error) {
-    console.error('❌ Failed to refresh flight mode cache:', error);
-    return false;
-  }
-};
-
-
-// Get random puzzle grids for animation using the unified cache system
-export const getRandomAnimationPuzzles = async (difficulty, count = 20) => {
-  try {
-    // Use the main cache system instead of direct imports
-    const puzzles = await loadPuzzleDatabase(difficulty);
+    const puzzles = loadPuzzleDatabase(difficulty);
     
     if (!puzzles || puzzles.length === 0) {
       throw new Error(`No puzzles available for difficulty: ${difficulty}`);
@@ -284,7 +47,7 @@ export const getRandomAnimationPuzzles = async (difficulty, count = 20) => {
     // Standardized fallback: try medium difficulty first
     if (difficulty !== 'medium') {
       try {
-        return await getRandomAnimationPuzzles('medium', count);
+        return getRandomAnimationPuzzles('medium', count);
       } catch (fallbackError) {
         console.error('Animation fallback to medium failed:', fallbackError);
       }
@@ -393,18 +156,18 @@ export const generateCompleteGrid = () => {
 };
 
 // Generate a Sudoku puzzle from the database
-export const generatePuzzle = async (difficulty = 'medium', isMultiplayer = false) => {
+export const generatePuzzle = (difficulty = 'medium', isMultiplayer = false) => {
   try {
-    // Dynamically load the puzzle database for the selected difficulty
-    const puzzleDatabase = await loadPuzzleDatabase(difficulty);
+    // Load the puzzle database for the selected difficulty
+    const puzzles = loadPuzzleDatabase(difficulty);
     
-    if (!puzzleDatabase || puzzleDatabase.length === 0) {
+    if (!puzzles || puzzles.length === 0) {
       throw new Error(`No puzzles available for difficulty: ${difficulty}`);
     }
     
     // Select a random puzzle from the database
-    const randomIndex = Math.floor(Math.random() * puzzleDatabase.length);
-    const puzzleEntry = puzzleDatabase[randomIndex];
+    const randomIndex = Math.floor(Math.random() * puzzles.length);
+    const puzzleEntry = puzzles[randomIndex];
     
     // Extract puzzle string, solution string, and rating from the new format
     const [puzzleString, solutionString, rating] = puzzleEntry;

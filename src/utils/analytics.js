@@ -129,15 +129,6 @@ export const trackHintUsed = (hintLevel, difficulty) => {
   });
 };
 
-// Track flight mode toggle
-export const trackFlightModeToggle = (enabled) => {
-  trackEvent('flight_mode_toggle', {
-    enabled: enabled,
-    event_label: `Flight mode ${enabled ? 'enabled' : 'disabled'}`,
-    value: 1
-  });
-};
-
 // Track multiplayer game creation
 export const trackMultiplayerGameCreate = (roomId) => {
   trackEvent('multiplayer_game_create', {
@@ -164,7 +155,6 @@ export default {
   trackGameCompleted,
   trackGameOver,
   trackHintUsed,
-  trackFlightModeToggle,
   trackMultiplayerGameCreate,
   trackMultiplayerGameStart
 };

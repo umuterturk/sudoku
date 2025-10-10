@@ -1,29 +1,18 @@
 // Firebase configuration for multiplayer Sudoku
 import { initializeApp } from 'firebase/app';
 import { getFirestore, connectFirestoreEmulator } from 'firebase/firestore';
-
-// Try to import dev config (only available in development, ignored by git)
-let devConfig = null;
-try {
-  if (import.meta.env.DEV) {
-    const { devFirebaseConfig } = await import('../config/firebase.dev.js');
-    devConfig = devFirebaseConfig;
-  }
-} catch (error) {
-  // Dev config file doesn't exist, which is expected in production
-  console.log('Dev Firebase config not found (expected in production)');
-}
+import { devFirebaseConfig } from '../config/firebase.dev.js';
 
 // Firebase configuration using environment variables with dev fallback
 // Note: GitHub Actions should have these set via secrets
 const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || (import.meta.env.DEV ? devConfig?.apiKey : undefined),
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || (import.meta.env.DEV ? devConfig?.authDomain : undefined),
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || (import.meta.env.DEV ? devConfig?.projectId : undefined),
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || (import.meta.env.DEV ? devConfig?.storageBucket : undefined),
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || (import.meta.env.DEV ? devConfig?.messagingSenderId : undefined),
-  appId: import.meta.env.VITE_FIREBASE_APP_ID || (import.meta.env.DEV ? devConfig?.appId : undefined),
-  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID || (import.meta.env.DEV ? devConfig?.measurementId : undefined)
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || (import.meta.env.DEV ? devFirebaseConfig?.apiKey : undefined),
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || (import.meta.env.DEV ? devFirebaseConfig?.authDomain : undefined),
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || (import.meta.env.DEV ? devFirebaseConfig?.projectId : undefined),
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || (import.meta.env.DEV ? devFirebaseConfig?.storageBucket : undefined),
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || (import.meta.env.DEV ? devFirebaseConfig?.messagingSenderId : undefined),
+  appId: import.meta.env.VITE_FIREBASE_APP_ID || (import.meta.env.DEV ? devFirebaseConfig?.appId : undefined),
+  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID || (import.meta.env.DEV ? devFirebaseConfig?.measurementId : undefined)
 };
 
 // Validate configuration
